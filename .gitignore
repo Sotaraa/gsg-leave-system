@@ -1,0 +1,8 @@
+.env
+.env.*
+node_modules/
+dist/
+.claude/
+guides/
+generate_guides.py
+*.local
