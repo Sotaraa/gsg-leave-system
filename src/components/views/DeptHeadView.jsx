@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import CONFIG from '../../config.js';
-import { formatDateUK, calculateWorkingDays } from '../../utils/helpers.js';
+import { formatDateUK, calculateWorkingDays, getTermForDate } from '../../utils/helpers.js';
 import { isDeductible, TypeNote, TypeBadge, getColor } from './EmployeeView.jsx';
 
 const DeptHeadView = ({
   requests, staffList, myDept, isAdmin,
   handleApproval, handleManualAdd, manualLeave, setManualLeave, handleStaffSelect,
   getLeaveTaken, getTOILBalance, updateStaffTarget, currentHolidayYear,
-  pendingApprovalId, setPendingApprovalId, termDates
+  pendingApprovalId, setPendingApprovalId, termDates, schoolTerms, systemSettings
 }) => {
   const [targetEdits, setTargetEdits] = useState({});
 
@@ -26,24 +26,29 @@ const DeptHeadView = ({
   const proposedDays = useMemo(() => {
     if (!manualLeave.startDate) return 0;
     if (!manualLeave.isHalfDay && !manualLeave.endDate) return 0;
+    const staffPattern = selectedManualStaff?.workingDays?.length ? selectedManualStaff.workingDays : [1, 2, 3, 4, 5];
     return calculateWorkingDays(
       manualLeave.startDate,
       manualLeave.endDate || manualLeave.startDate,
       manualLeave.isHalfDay,
-      termDates || []
+      termDates || [],
+      staffPattern
     );
-  }, [manualLeave.startDate, manualLeave.endDate, manualLeave.isHalfDay, termDates]);
+  }, [manualLeave.startDate, manualLeave.endDate, manualLeave.isHalfDay, termDates, selectedManualStaff]);
 
   /* Current balance of the selected staff member */
   const selectedBalance = useMemo(() => {
     if (!selectedManualStaff || !currentHolidayYear) return null;
     if (selectedManualStaff.isTermTime) {
-      const toil = getTOILBalance(selectedManualStaff.email, selectedManualStaff.termTimeDaysTarget);
+      const toil = getTOILBalance(selectedManualStaff.email, selectedManualStaff.termTimeDaysTarget, selectedManualStaff.hoursPerDay, true);
       return { isTermTime: true, credit: toil.credit ?? 0, accrued: toil.accrued || 0, effectiveTarget: toil.effectiveTarget || 30 };
     }
-    const taken = getLeaveTaken(selectedManualStaff.email, false);
-    const effective = (selectedManualStaff.allowance || 0) + (selectedManualStaff.carryForwardDays || 0);
-    return { isTermTime: false, remaining: effective - taken, effective };
+    const taken       = getLeaveTaken(selectedManualStaff.email, false);
+    const baseEff     = (selectedManualStaff.allowance || 0) + (selectedManualStaff.carryForwardDays || 0);
+    const toil        = getTOILBalance(selectedManualStaff.email, 0, selectedManualStaff.hoursPerDay, false);
+    const toilCredit  = Math.max(0, toil.credit ?? 0);
+    const effective   = baseEff + toilCredit; // approved extra hours add to total available leave
+    return { isTermTime: false, remaining: effective - taken, effective, toilCredit, baseAllowance: baseEff };
   }, [selectedManualStaff, currentHolidayYear, getTOILBalance, getLeaveTaken]);
 
   const RecordWarning = () => {
@@ -76,14 +81,16 @@ const DeptHeadView = ({
       }
     }
 
-    if (selectedBalance.isTermTime && manualLeave.type === CONFIG.toiLeaveType) {
-      if (proposedDays > selectedBalance.credit) {
+    if (manualLeave.type === CONFIG.toiLeaveType) {
+      const credit = selectedBalance.isTermTime ? selectedBalance.credit : (selectedBalance.toilCredit ?? 0);
+      if (proposedDays > credit) {
         return (
           <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex gap-2 items-start">
             <AlertCircle size={13} className="text-red-500 mt-0.5 flex-shrink-0"/>
             <p className="text-xs text-red-700">
-              <strong>{selectedManualStaff.name}</strong> has <strong>{selectedBalance.credit}d</strong> credit.
-              This TOIL request is for <strong>{proposedDays}d</strong> — approving will add {proposedDays - selectedBalance.credit}d to their working target.
+              <strong>{selectedManualStaff.name}</strong> has <strong>{credit}d</strong> TOIL credit.
+              This request is for <strong>{proposedDays}d</strong>
+              {selectedBalance.isTermTime ? ` — approving will add ${proposedDays - credit}d to their working target.` : ' — they do not have enough credit.'}
             </p>
           </div>
         );
@@ -110,6 +117,7 @@ const DeptHeadView = ({
               const isTermTimePerson = staffMember?.isTermTime;
               const isTOI            = r.type === CONFIG.toiLeaveType;
               const isTTLeave        = r.type === CONFIG.termTimeLeaveType;
+              const isExtraHours     = r.type === CONFIG.extraHoursType;
 
               /* Check balance to flag negative/low */
               let balanceNote = null;
@@ -136,23 +144,39 @@ const DeptHeadView = ({
                 }
               }
 
+              const termName = schoolTerms?.length ? getTermForDate(r.startDate, schoolTerms) : null;
+              const hasCalendar = schoolTerms?.length > 0;
               return (
                 <div key={r.id} className="p-3 bg-gray-50 rounded mb-3 border">
                   <div className="mb-2">
-                    <div className="flex items-center gap-2 mb-0.5">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
                       <p className="font-bold text-sm">{r.employeeName}</p>
                       {isTermTimePerson && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">Term Time</span>
+                        <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">Term Time Staff</span>
+                      )}
+                      {hasCalendar && (
+                        termName
+                          ? <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-semibold">{termName} Term</span>
+                          : <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-semibold">School Holiday</span>
                       )}
                     </div>
                     <p className="text-xs text-gray-500">
-                      {r.type}, {r.daysCount}d, {formatDateUK(r.startDate)}
+                      {r.type}, {isNaN(Number(r.daysCount)) ? '?' : r.daysCount}d{r.hoursWorked ? ` (${r.hoursWorked}h)` : ''}, {formatDateUK(r.startDate)}
                     </p>
+                    {r.sickReason && <p className="text-xs text-rose-500 mt-0.5">Reason: {r.sickReason}</p>}
                     {isTOI && (
                       <div className="mt-1.5 bg-orange-50 border border-orange-200 rounded px-2 py-1.5">
                         <p className="text-xs text-orange-700">
-                          Approving this will use {r.daysCount}d from their school holiday credit.
-                          If they have not earned enough yet, the shortfall will be added to their working target.
+                          {isTermTimePerson
+                            ? `Approving this will use ${r.daysCount}d from their school holiday credit. If they have not earned enough yet, the shortfall will be added to their working target.`
+                            : `Approving this will use ${r.daysCount}d from their TOIL credit earned through extra hours worked.`}
+                        </p>
+                      </div>
+                    )}
+                    {isExtraHours && (
+                      <div className="mt-1.5 bg-indigo-50 border border-indigo-200 rounded px-2 py-1.5">
+                        <p className="text-xs text-indigo-700">
+                          Approving this will add {r.daysCount}d ({r.hoursWorked ? `${r.hoursWorked}h` : 'hours-based'}) to their Time Off in Lieu credit.
                         </p>
                       </div>
                     )}
@@ -206,7 +230,8 @@ const DeptHeadView = ({
                 ) : (
                   <span>
                     Leave balance: <strong className={selectedBalance.remaining < 0 ? 'text-red-700' : 'text-emerald-700'}>{selectedBalance.remaining}d remaining</strong>
-                    {' '}of {selectedBalance.effective}d allowance
+                    {' '}of {selectedBalance.effective}d total
+                    {selectedBalance.toilCredit > 0 && <> &nbsp;·&nbsp; incl. <strong className="text-orange-600">{selectedBalance.toilCredit}d</strong> from extra hours</>}
                   </span>
                 )}
               </div>
@@ -225,21 +250,65 @@ const DeptHeadView = ({
             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Absence Type</label>
             <select className="mb-2 w-full" value={manualLeave.type} onChange={e => setManualLeave({ ...manualLeave, type: e.target.value })}>
               {CONFIG.leaveTypes.filter(t => {
-                if (selectedManualStaff?.isTermTime) return t !== 'Annual Leave';
-                return t !== CONFIG.toiLeaveType && t !== CONFIG.termTimeWorkType && t !== CONFIG.termTimeLeaveType;
+                if (selectedManualStaff?.isTermTime) return t !== 'Annual Leave' && t !== CONFIG.extraHoursType;
+                return t !== CONFIG.termTimeWorkType && t !== CONFIG.termTimeLeaveType;
               }).map(t => <option key={t}>{t}</option>)}
             </select>
 
             <TypeNote type={manualLeave.type} currentHolidayYear={currentHolidayYear} startDate={manualLeave.startDate}/>
+            {/* Hours entry for TOIL accrual types (School Holiday Worked / Extra Hours Worked) */}
+            {(manualLeave.type === CONFIG.termTimeWorkType || manualLeave.type === CONFIG.extraHoursType) && (() => {
+              const hpd = Number(selectedManualStaff?.hoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
+              const hrs = Number(manualLeave.hoursWorked);
+              return (
+                <div className="mb-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
+                  <p className="text-xs font-semibold text-indigo-700 mb-1">Log Hours Worked (optional)</p>
+                  <p className="text-xs text-indigo-500 mb-2">Enter hours instead of a full day count — useful for partial days. {hpd}h = 1 day {selectedManualStaff?.hoursPerDay ? '(per staff contract)' : '(system default)'}.</p>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="0.5" max="999" step="0.5" className="w-28"
+                      placeholder={`e.g. ${hpd * 2}`}
+                      value={manualLeave.hoursWorked || ''}
+                      onChange={e => setManualLeave({ ...manualLeave, hoursWorked: e.target.value })}
+                    />
+                    <span className="text-xs text-indigo-600 font-medium">
+                      {hrs > 0 ? `= ${(hrs / hpd).toFixed(3).replace(/\.?0+$/, '')}d credited` : 'hours'}
+                    </span>
+                  </div>
+                  {hrs > 0 && <p className="text-[10px] text-indigo-400 mt-1">Date field is still used as the work date for record-keeping.</p>}
+                </div>
+              );
+            })()}
+            {manualLeave.type === 'Sick Leave' && (
+              <div className="mb-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">Sickness Reason (optional)</label>
+                <input type="text" placeholder="e.g. Flu, back pain, migraine..."
+                  maxLength={200}
+                  value={manualLeave.sickReason || ''}
+                  onChange={e => setManualLeave({ ...manualLeave, sickReason: e.target.value })}
+                />
+              </div>
+            )}
             <RecordWarning />
 
             {manualLeave.startDate && currentHolidayYear?.end && manualLeave.startDate > currentHolidayYear.end && (
               <p className="text-xs text-indigo-700 mb-2 bg-indigo-50 p-2 rounded border border-indigo-200">
-                This date falls in the next holiday year and will count against the new year's allowance.
+                This date falls in the next holiday year and will count against the new year allowance.
               </p>
             )}
 
-            <button className="btn btn-primary w-full mt-2">Record Absence</button>
+            {/* Silent email toggle */}
+            <label className={`flex items-center gap-2 mt-3 mb-2 px-3 py-2 rounded-lg border cursor-pointer select-none transition-colors ${manualLeave.silentEmail ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}>
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-amber-500"
+                checked={manualLeave.silentEmail || false}
+                onChange={e => setManualLeave({ ...manualLeave, silentEmail: e.target.checked })}
+              />
+              <span className={`text-xs font-medium ${manualLeave.silentEmail ? 'text-amber-700' : 'text-gray-500'}`}>
+                {manualLeave.silentEmail ? 'Silent — no email notification will be sent' : 'Send email notification'}
+              </span>
+            </label>
+            <button className="btn btn-primary w-full mt-1">Record Absence</button>
           </form>
         </div>
       </div>
@@ -366,11 +435,14 @@ const DeptHeadView = ({
               }
 
               /* ── STANDARD ROW ── */
-              const taken     = getLeaveTaken(s.email, false);
-              const effective = (s.allowance || 0) + (s.carryForwardDays || 0);
-              const remaining = effective - taken;
-              const isNegative = remaining < 0;
-              const isLow      = remaining >= 0 && remaining <= 3;
+              const taken        = getLeaveTaken(s.email, false);
+              const baseEff      = (s.allowance || 0) + (s.carryForwardDays || 0);
+              const rowToil      = getTOILBalance(s.email, 0, s.hoursPerDay, false);
+              const rowToilCredit = Math.max(0, rowToil?.credit ?? 0);
+              const effective    = baseEff + rowToilCredit;
+              const remaining    = effective - taken;
+              const isNegative   = remaining < 0;
+              const isLow        = remaining >= 0 && remaining <= 3;
 
               return (
                 <tr key={s.id} className={isNegative ? 'bg-red-50' : ''}>
@@ -383,7 +455,10 @@ const DeptHeadView = ({
                   <td className="text-sm">
                     {effective}d
                     {s.carryForwardDays > 0 && (
-                      <span className="text-xs text-indigo-500 ml-1">(+{s.carryForwardDays}d carried forward)</span>
+                      <span className="text-xs text-indigo-500 ml-1">(+{s.carryForwardDays}d carry)</span>
+                    )}
+                    {rowToilCredit > 0 && (
+                      <span className="text-xs text-orange-500 ml-1">(+{rowToilCredit}d TOIL)</span>
                     )}
                   </td>
                   <td className="text-sm">{taken}d used</td>

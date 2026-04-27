@@ -36,6 +36,29 @@ export const generateUKBankHolidays = (year) => {
 };
  
 export const formatDateUK = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '';
+
+// Returns the term name ('Autumn', 'Spring', 'Summer') if dateStr falls within a configured term,
+// or null if the date is a school holiday (outside all terms, or in a half-term break).
+// Half-term breaks sit inside the main term date range but are treated as school holidays.
+export const getTermForDate = (dateStr, schoolTerms) => {
+  if (!dateStr || !schoolTerms?.length) return null;
+  for (const t of schoolTerms) {
+    // Half-terms override term-time status → treat as school holiday
+    const inHalfTerm = (
+      (t.autumnHalfTermStart && t.autumnHalfTermEnd && dateStr >= t.autumnHalfTermStart && dateStr <= t.autumnHalfTermEnd) ||
+      (t.springHalfTermStart && t.springHalfTermEnd && dateStr >= t.springHalfTermStart && dateStr <= t.springHalfTermEnd) ||
+      (t.summerHalfTermStart && t.summerHalfTermEnd && dateStr >= t.summerHalfTermStart && dateStr <= t.summerHalfTermEnd)
+    );
+    if (inHalfTerm) return null; // half-term break = school holiday
+
+    if (t.autumnStart && t.autumnEnd && dateStr >= t.autumnStart && dateStr <= t.autumnEnd) return 'Autumn';
+    if (t.springStart && t.springEnd && dateStr >= t.springStart && dateStr <= t.springEnd) return 'Spring';
+    if (t.summerStart && t.summerEnd && dateStr >= t.summerStart && dateStr <= t.summerEnd) return 'Summer';
+  }
+  return null; // outside all terms = school holiday
+};
+
+export const isWithinTermTime = (dateStr, schoolTerms) => getTermForDate(dateStr, schoolTerms) !== null;
  
 export const getShortLeaveType = (type) => {
   if (type === CONFIG.termTimeWorkType) return "Work (+)";
@@ -43,8 +66,12 @@ export const getShortLeaveType = (type) => {
   return type.split(' ')[0];
 };
  
-export const calculateWorkingDays = (startDate, endDate, isHalfDay, termDates) => {
+export const calculateWorkingDays = (startDate, endDate, isHalfDay, termDates, workPattern) => {
   if (!startDate) return 0;
+
+  // workPattern: array of ISO weekday numbers that this person works, e.g. [1,2,3,4,5] = Mon–Fri.
+  // Empty / null / undefined → full Mon–Fri (default, backward-compatible).
+  const pattern = (workPattern && workPattern.length > 0) ? workPattern : [1, 2, 3, 4, 5];
 
   // Parse date strings as UTC noon to avoid DST clock-change boundary issues.
   // e.g. UK clocks go back on 26 Oct — iterating via local midnight causes a
@@ -69,7 +96,7 @@ export const calculateWorkingDays = (startDate, endDate, isHalfDay, termDates) =
 
   if (isHalfDay) {
     const day = start.getUTCDay();
-    if (day === 0 || day === 6 || bankHolidaySet.has(startDate)) return 0;
+    if (!pattern.includes(day) || bankHolidaySet.has(startDate)) return 0;
     return 0.5;
   }
 
@@ -77,7 +104,7 @@ export const calculateWorkingDays = (startDate, endDate, isHalfDay, termDates) =
   for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
     const day     = d.getUTCDay();
     const dateStr = toDateStr(d);
-    if (day !== 0 && day !== 6 && !bankHolidaySet.has(dateStr)) count++;
+    if (pattern.includes(day) && !bankHolidaySet.has(dateStr)) count++;
   }
   return count;
 };

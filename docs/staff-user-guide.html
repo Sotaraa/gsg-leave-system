@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Gardener Schools Group - HR Portal Staff Guide</title>
+<style>
+  :root {
+    --green-deep:  #064e3b;
+    --green-mid:   #065f46;
+    --green-light: #d1fae5;
+    --green-pale:  #f0fdf4;
+    --amber-bg:    #fffbeb;
+    --amber-border:#fde68a;
+    --amber-text:  #92400e;
+    --orange-bg:   #fff7ed;
+    --orange-bdr:  #fed7aa;
+    --orange-text: #9a3412;
+    --blue-bg:     #eff6ff;
+    --blue-bdr:    #bfdbfe;
+    --blue-text:   #1e40af;
+    --gray-900:    #111827;
+    --gray-700:    #374151;
+    --gray-500:    #6b7280;
+    --gray-200:    #e5e7eb;
+    --gray-100:    #f9fafb;
+    --white:       #ffffff;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { font-size: 10.5pt; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-weight: 400;
+    color: var(--gray-700);
+    background: #d4dbd4;
+    line-height: 1.6;
+  }
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 10mm auto;
+    background: var(--white);
+    box-shadow: 0 4px 40px rgba(0,0,0,0.2);
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  .header {
+    background: var(--green-deep);
+    padding: 24px 32px 20px;
+  }
+  .header-top {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .org-tag {
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 6px;
+  }
+  .header-title {
+    font-size: 23pt;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+  .header-sub {
+    font-size: 9pt;
+    color: rgba(255,255,255,0.6);
+    margin-top: 5px;
+    font-weight: 300;
+  }
+  .edition-pill {
+    background: rgba(255,255,255,0.13);
+    border: 1px solid rgba(255,255,255,0.22);
+    color: rgba(255,255,255,0.8);
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 5px 11px;
+    border-radius: 4px;
+  }
+
+  /* CONTENT */
+  .content { padding: 24px 32px 18px; }
+
+  /* SECTIONS */
+  .section { margin-bottom: 20px; }
+  .sec-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 10px;
+    padding-bottom: 7px;
+    border-bottom: 2px solid var(--green-light);
+  }
+  .sec-num {
+    background: var(--green-deep);
+    color: var(--white);
+    font-size: 7pt;
+    font-weight: 700;
+    width: 21px; height: 21px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .sec-title {
+    font-size: 13pt;
+    font-weight: 700;
+    color: var(--green-deep);
+    letter-spacing: -0.3px;
+  }
+
+  p {
+    font-size: 9.5pt;
+    margin-bottom: 8px;
+    line-height: 1.65;
+    color: var(--gray-700);
+  }
+  p:last-child { margin-bottom: 0; }
+  strong { color: var(--gray-900); font-weight: 600; }
+
+  /* 3-CARD ROW */
+  .card-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin: 10px 0;
+  }
+  .card {
+    border-radius: 5px;
+    padding: 10px 12px;
+  }
+  .card-green  { background: var(--green-pale);  border: 1px solid var(--green-light);  border-top: 3px solid var(--green-mid); }
+  .card-orange { background: var(--orange-bg);   border: 1px solid var(--orange-bdr);   border-top: 3px solid #ea580c; }
+  .card-amber  { background: var(--amber-bg);    border: 1px solid var(--amber-border); border-top: 3px solid #d97706; }
+  .card-head {
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+  }
+  .card-green  .card-head { color: var(--green-mid); }
+  .card-orange .card-head { color: #c2410c; }
+  .card-amber  .card-head { color: #b45309; }
+  .card p { font-size: 8.5pt; }
+
+  /* STEPS */
+  .steps { margin: 10px 0; }
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 7px;
+  }
+  .snum {
+    background: var(--green-mid);
+    color: var(--white);
+    font-size: 7pt;
+    font-weight: 700;
+    min-width: 19px; height: 19px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .stxt { font-size: 9.5pt; line-height: 1.55; color: var(--gray-700); padding-top:1px; }
+
+  /* TWO COL */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
+
+  /* ABSENCE TABLE */
+  .abt {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 8.5pt;
+  }
+  .abt thead tr { background: var(--green-deep); color: var(--white); }
+  .abt thead th {
+    padding: 7px 10px;
+    text-align: left;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .abt tbody tr { border-bottom: 1px solid var(--gray-200); }
+  .abt tbody tr:nth-child(even) { background: var(--gray-100); }
+  .abt td { padding: 7px 10px; vertical-align: top; line-height: 1.5; }
+  .abt td:first-child { font-weight: 600; color: var(--gray-900); width: 33%; }
+  .abt tr.tt-row td { background: var(--blue-bg) !important; }
+  .abt tr.tt-row td:first-child { color: var(--blue-text); }
+
+  /* BADGES */
+  .badge {
+    display: inline-block;
+    font-size: 6pt;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 3px;
+    vertical-align: middle;
+  }
+  .bg   { background: var(--green-light);  color: var(--green-deep); }
+  .ba   { background: var(--amber-border); color: var(--amber-text); }
+  .bo   { background: var(--orange-bdr);   color: var(--orange-text); }
+  .bgr  { background: var(--gray-200);     color: var(--gray-500); }
+  .bbl  { background: var(--blue-bdr);     color: var(--blue-text); }
+
+  /* NOTE / HIGHLIGHT BOXES */
+  .note-box {
+    background: var(--amber-bg);
+    border-left: 3px solid #f59e0b;
+    border-radius: 0 4px 4px 0;
+    padding: 8px 12px;
+    margin: 9px 0;
+    font-size: 8.5pt;
+    color: #78350f;
+    line-height: 1.55;
+  }
+  .hi-box {
+    background: var(--green-pale);
+    border-left: 3px solid var(--green-mid);
+    border-radius: 0 4px 4px 0;
+    padding: 8px 12px;
+    margin: 9px 0;
+    font-size: 8.5pt;
+    color: var(--green-deep);
+    line-height: 1.55;
+  }
+
+  /* TIPS */
+  .tips { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 10px 0; }
+  .tip {
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: 5px;
+    padding: 8px 10px 8px 28px;
+    font-size: 8.5pt;
+    line-height: 1.5;
+    position: relative;
+    color: var(--gray-700);
+  }
+  .tip::before {
+    content: '\2713';
+    position: absolute;
+    left: 9px; top: 8px;
+    color: var(--green-mid);
+    font-weight: 700;
+    font-size: 9pt;
+  }
+
+  /* FOOTER */
+  .footer {
+    background: var(--green-deep);
+    padding: 10px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .fl { font-size: 7pt; color: rgba(255,255,255,0.5); letter-spacing: 0.3px; }
+  .fr { font-size: 7pt; color: rgba(255,255,255,0.35); }
+
+  /* PRINT */
+  @media print {
+    body { background: white; }
+    .page { width: 100%; margin: 0; box-shadow: none; }
+    @page { size: A4; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="org-tag">Gardener Schools Group</div>
+        <div class="header-title">HR Portal Staff Guide</div>
+        <div class="header-sub">Everything you need to manage your leave and extra hours</div>
+      </div>
+      <div class="edition-pill">2025 Edition</div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- 1. SIGNING IN -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-num">1</div>
+        <div class="sec-title">Signing In</div>
+      </div>
+      <p>Open the HR Portal link shared by your HR team. Click <strong>Sign in with Microsoft</strong> and enter your school email address and password. You will be taken directly to your personal leave dashboard. If you have trouble signing in, contact the HR team or your line manager for assistance.</p>
+    </div>
+
+    <!-- 2. DASHBOARD -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-num">2</div>
+        <div class="sec-title">Understanding Your Dashboard</div>
+      </div>
+      <p>When you log in you will see your complete leave position at a glance. There are three key areas to be aware of.</p>
+      <div class="card-row">
+        <div class="card card-green">
+          <div class="card-head">Annual Leave Card</div>
+          <p>Shows your total available days. This is your annual allowance, plus any days carried forward, plus any days earned from approved extra hours. For example: 20d allowance plus 2d from extra hours equals 22d total. This figure updates in real time whenever a request is approved.</p>
+        </div>
+        <div class="card card-orange">
+          <div class="card-head">Extra Hours Strip</div>
+          <p>Appears in orange when you have logged extra hours that have been approved by your line manager. It shows how many hours you have worked and confirms how many days have already been added to your leave balance above. No further action is needed on your part.</p>
+        </div>
+        <div class="card card-amber">
+          <div class="card-head">Other Absences</div>
+          <p>Sick leave, medical appointments, CPD and compassionate leave are recorded here for HR purposes only. These absence types do not reduce your annual leave allowance in any way.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. BOOKING LEAVE -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-num">3</div>
+        <div class="sec-title">How to Submit a Leave Request</div>
+      </div>
+      <div class="steps">
+        <div class="step"><div class="snum">1</div><div class="stxt">Enter your <strong>start date</strong> and <strong>end date</strong> using the date fields on the left panel of your dashboard.</div></div>
+        <div class="step"><div class="snum">2</div><div class="stxt">Tick the <strong>Half Day</strong> box if you only need part of a working day.</div></div>
+        <div class="step"><div class="snum">3</div><div class="stxt">Choose the correct <strong>absence type</strong> from the dropdown. See Section 4 for a full guide to each type.</div></div>
+        <div class="step"><div class="snum">4</div><div class="stxt">For <strong>Sick Leave</strong>, you may enter a brief optional reason (for example "Flu" or "Back pain"). This is for HR records only.</div></div>
+        <div class="step"><div class="snum">5</div><div class="stxt">Click <strong>Submit Request.</strong> Your line manager receives an automatic email notification straight away.</div></div>
+        <div class="step"><div class="snum">6</div><div class="stxt">You will receive an <strong>email confirmation</strong> once your request has been approved or declined.</div></div>
+      </div>
+      <div class="note-box"><strong>Please note:</strong> If you try to book more leave than you have available, the system will display a clear warning message before you submit. Always check your balance before submitting.</div>
+    </div>
+
+    <!-- 4. ABSENCE TYPES -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-num">4</div>
+        <div class="sec-title">What Each Absence Type Means</div>
+      </div>
+      <table class="abt">
+        <thead>
+          <tr><th>Absence Type</th><th>What it is and when to use it</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Annual Leave <span class="badge bg">Deducted</span></td>
+            <td>Use for holidays, personal days and planned time away. Days are deducted from your annual allowance.</td>
+          </tr>
+          <tr>
+            <td>Extra Hours Worked <span class="badge bo">Manager approval</span></td>
+            <td>Use this to log hours you have worked beyond your contracted hours. This benefits the school by providing valuable flexibility when the team needs it most, and it benefits you by converting those hours directly into additional leave days. Your personal rate is set by HR — the default is 8 hours equals 1 day. <strong>Must be approved by your direct line manager.</strong></td>
+          </tr>
+          <tr>
+            <td>Time Off in Lieu <span class="badge bo">Manager approval</span></td>
+            <td>Use this once you have earned credit through Extra Hours Worked and wish to take those days as leave. Your line manager will confirm the timing works for the school before approving. <strong>Must be approved by your direct line manager.</strong></td>
+          </tr>
+          <tr>
+            <td>Sick Leave <span class="badge bgr">HR record only</span></td>
+            <td>Record whenever you are absent due to illness. Does not affect your leave balance. You may add an optional brief reason for HR records.</td>
+          </tr>
+          <tr>
+            <td>Medical Appointment <span class="badge bgr">HR record only</span></td>
+            <td>Record attendance at medical or dental appointments. Does not reduce your allowance.</td>
+          </tr>
+          <tr>
+            <td>CPD <span class="badge bgr">HR record only</span></td>
+            <td>Record continuing professional development. Does not reduce your allowance.</td>
+          </tr>
+          <tr>
+            <td>Compassionate / Unpaid <span class="badge bgr">HR record only</span></td>
+            <td>Recorded for HR purposes only. Does not reduce your leave allowance.</td>
+          </tr>
+          <tr class="tt-row">
+            <td>School Holiday Worked <span class="badge bbl">Term Time</span> <span class="badge bo">Manager approval</span></td>
+            <td>For term time staff only. Log days worked during school holidays. This benefits the school by keeping operations running during holiday periods, and it builds your holiday working credit toward your annual target. <strong>Must be approved by your direct line manager.</strong></td>
+          </tr>
+          <tr class="tt-row">
+            <td>Term Time Leave <span class="badge bbl">Term Time</span></td>
+            <td>For term time staff only. For absences during the school term. Approved absences are added to your holiday working target for the year.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 5. LOGGING EXTRA HOURS -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-num">5</div>
+        <div class="sec-title">How to Log Extra Hours You Have Worked</div>
+      </div>
+      <p>When you work hours beyond your contracted hours, log them through the portal and your line manager will review and approve them. Once approved, those hours are automatically converted into leave days and added to your balance straight away.</p>
+      <div class="two-col">
+        <div class="steps">
+          <div class="step"><div class="snum">1</div><div class="stxt">In the Request Absence form, select <strong>Extra Hours Worked</strong> from the absence type dropdown.</div></div>
+          <div class="step"><div class="snum">2</div><div class="stxt">An hours input box appears. Enter the number of hours worked, for example <strong>4.5</strong>.</div></div>
+          <div class="step"><div class="snum">3</div><div class="stxt">The system instantly shows you <strong>how many days that converts to</strong> at your personal rate.</div></div>
+        </div>
+        <div class="steps">
+          <div class="step"><div class="snum">4</div><div class="stxt">Enter the <strong>date</strong> the extra work took place and click Submit.</div></div>
+          <div class="step"><div class="snum">5</div><div class="stxt">Your <strong>line manager receives a notification</strong> to review and approve the record.</div></div>
+          <div class="step"><div class="snum">6</div><div class="stxt">Once approved, those days appear <strong>immediately in your leave balance</strong> on the dashboard.</div></div>
+        </div>
+      </div>
+      <div class="hi-box">Extra Hours Worked and Time Off in Lieu requests must always be approved by your direct line manager. This ensures the school can plan cover effectively and that the arrangement works well for both you and the wider team. Your line manager may ask you to choose a timing for Time Off in Lieu that suits the school.</div>
+    </div>
+
+    <!-- 6. HISTORY -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-num">6</div>
+        <div class="sec-title">Viewing Your Absence History</div>
+      </div>
+      <p>The right-hand panel of your dashboard shows a complete record of every leave request and absence. Use the filter buttons at the top to view all records, pending requests, records by absence type, or leave already booked for the next holiday year. Records waiting for approval are shown in amber. Approved records are shown in green. Any sick leave reason you entered appears within the individual record. Leave approved for next year carries a clear "Next year" label and does not count against your current balance.</p>
+    </div>
+
+    <!-- 7. TIPS -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-num">7</div>
+        <div class="sec-title">Good to Know</div>
+      </div>
+      <div class="tips">
+        <div class="tip">Your leave balance always reflects the latest approved records in real time. There is no need to refresh or wait for an overnight update.</div>
+        <div class="tip">A clear warning appears before you submit if you are running low or trying to book more days than you currently have available.</div>
+        <div class="tip">Leave approved for the next holiday year is clearly labelled with a Next Year badge and counts against that year, not this one.</div>
+        <div class="tip">Once extra hours are approved, the days are added to your balance straight away. No further action is needed on your part.</div>
+        <div class="tip">Pending requests show in amber throughout the portal so you can always see what is still awaiting a decision.</div>
+        <div class="tip">If you believe your balance is incorrect, speak to your line manager or the HR team. Do not submit duplicate requests while waiting.</div>
+      </div>
+    </div>
+
+    <!-- 8. HELP -->
+    <div class="section" style="margin-bottom:8px;">
+      <div class="sec-head">
+        <div class="sec-num">8</div>
+        <div class="sec-title">Getting Support</div>
+      </div>
+      <p>For questions about your leave balance or a specific request, speak to your <strong>line manager</strong> in the first instance. For system access issues or technical problems with the portal, contact the <strong>HR team</strong> directly.</p>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <div class="fl">Gardener Schools Group HR Portal &nbsp;|&nbsp; Confidential — for staff use only</div>
+    <div class="fr">This guide reflects the current system — 2025</div>
+  </div>
+
+</div>
+</body>
+</html>

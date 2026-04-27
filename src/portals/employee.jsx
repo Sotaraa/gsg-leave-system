@@ -1,13 +1,13 @@
 // src/portals/employee.jsx
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { Clock, PlusCircle } from 'lucide-react';
-import RequestForm from './request-form'; // <--- Import the new form
+import { Clock, PlusCircle, Calendar } from 'lucide-react';
+import RequestForm from './request-form'; 
 
 export default function EmployeePortal({ currentUser }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false); // <--- State for Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (currentUser?.email) loadHistory();
@@ -22,14 +22,13 @@ export default function EmployeePortal({ currentUser }) {
   return (
     <div className="space-y-8 relative">
       
-      {/* The Modal (Only shows when state is true) */}
       {isModalOpen && (
         <RequestForm 
           userEmail={currentUser.email}
           onClose={() => setIsModalOpen(false)}
           onSuccess={() => {
-            loadHistory(); // Refresh the table automatically
-            // Ideally, show a toast notification here
+            loadHistory();
+            setIsModalOpen(false); // Close modal on success
           }}
         />
       )}
@@ -48,7 +47,6 @@ export default function EmployeePortal({ currentUser }) {
           </p>
         </div>
 
-        {/* The Button - Now wired up! */}
         <button 
             onClick={() => setIsModalOpen(true)}
             className="w-full bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-all shadow-lg flex flex-col items-center justify-center gap-2 py-4"
@@ -68,15 +66,28 @@ export default function EmployeePortal({ currentUser }) {
                 <thead className="bg-slate-50 text-slate-500">
                     <tr>
                         <th className="px-6 py-3">Type</th>
-                        <th className="px-6 py-3">Start Date</th>
+                        <th className="px-6 py-3">Dates</th>
+                        <th className="px-6 py-3 text-center">Days</th>
                         <th className="px-6 py-3">Status</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                     {requests.map(req => (
-                        <tr key={req.id}>
-                            <td className="px-6 py-4 font-medium">{req.type}</td>
-                            <td className="px-6 py-4 text-slate-500">{req.startDate}</td>
+                        <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <span className="font-medium text-slate-900">{req.type}</span>
+                              {req.isHalfDay && <span className="ml-2 text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold">Half Day</span>}
+                            </td>
+                            <td className="px-6 py-4 text-slate-500">
+                              <div className="flex items-center gap-1">
+                                <Calendar size={12} />
+                                {req.startDate}
+                                {req.endDate && req.endDate !== req.startDate && ` → ${req.endDate}`}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center font-bold text-slate-700">
+                              {req.daysCount}
+                            </td>
                             <td className="px-6 py-4">
                                 <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                                     req.status === 'Approved' ? 'bg-green-100 text-green-700' : 

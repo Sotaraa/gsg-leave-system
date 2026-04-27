@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { Check, X, User, Calendar, ShieldCheck } from 'lucide-react';
+import { Check, X, User, Calendar, ShieldCheck, Clock } from 'lucide-react';
 
 export default function ManagerPortal({ currentUser }) {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Only load if user has a department
     if (currentUser?.department) {
       loadTeamRequests();
     }
@@ -20,15 +19,12 @@ export default function ManagerPortal({ currentUser }) {
   };
 
   const handleDecision = async (id, status) => {
-    // 1. Optimistic UI Update (Remove from list instantly)
     setPendingRequests(prev => prev.filter(req => req.id !== id));
-
     try {
-      // 2. Send to API
       await api.updateRequestStatus(id, status, `Processed by ${currentUser.displayName}`);
     } catch (error) {
       alert("Error updating request");
-      loadTeamRequests(); // Revert on error
+      loadTeamRequests();
     }
   };
 
@@ -60,10 +56,27 @@ export default function ManagerPortal({ currentUser }) {
                    <div className="flex items-center gap-2 mb-2">
                      <span className="font-bold text-slate-900">{req.employeeName || req.employeeEmail}</span>
                      <span className="text-xs bg-slate-100 px-2 py-1 rounded text-slate-500 font-bold uppercase">{req.type}</span>
+                     
+                     {/* AMENDED: Visual badge for Half Day */}
+                     {req.isHalfDay && (
+                       <span className="text-xs bg-blue-100 px-2 py-1 rounded text-blue-600 font-bold flex items-center gap-1">
+                         <Clock size={12} /> 0.5 DAY
+                       </span>
+                     )}
                    </div>
-                   <div className="flex items-center gap-2 text-sm text-slate-500">
-                      <Calendar size={14} /> {req.startDate}
+                   
+                   <div className="flex items-center gap-4 text-sm text-slate-500">
+                      <div className="flex items-center gap-2">
+                        <Calendar size={14} /> 
+                        {req.startDate} {req.endDate && req.endDate !== req.startDate ? ` to ${req.endDate}` : ''}
+                      </div>
+                      
+                      {/* AMENDED: Display the calculated days count */}
+                      <div className="font-medium text-slate-700">
+                        Total: {req.daysCount} {req.daysCount === 1 ? 'day' : 'days'}
+                      </div>
                    </div>
+                   
                    {req.comments && <p className="text-sm text-slate-500 mt-2 italic">"{req.comments}"</p>}
                 </div>
                 <div className="flex gap-2">

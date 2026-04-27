@@ -13,12 +13,14 @@ export const isDeductible = (type) =>
   !CONFIG.nonDeductibleTypes.includes(type) &&
   type !== CONFIG._legacyProfDevType &&
   type !== CONFIG.toiLeaveType &&
-  type !== CONFIG.termTimeLeaveType;
+  type !== CONFIG.termTimeLeaveType &&
+  type !== CONFIG.extraHoursType;
 
 export const TYPE_META = {
   'Annual Leave':           { icon: CalendarDays,   color: 'emerald', counts: true  },
-  'School Holiday Worked':  { icon: Briefcase,      color: 'blue',    counts: true  },
-  'Holiday Work (Accrued)': { icon: Briefcase,      color: 'blue',    counts: true  },
+  'Extra Hours Worked':     { icon: Clock,          color: 'indigo',  counts: false },
+  'School Holiday Worked':  { icon: Briefcase,      color: 'blue',    counts: false },
+  'Holiday Work (Accrued)': { icon: Briefcase,      color: 'blue',    counts: false },
   'Time Off in Lieu':       { icon: Coffee,         color: 'orange',  counts: false },
   'Term Time Leave':        { icon: School,         color: 'amber',   counts: false },
   'Sick Leave':             { icon: Stethoscope,    color: 'rose',    counts: false },
@@ -32,6 +34,7 @@ export const TYPE_META = {
 export const COLOR = {
   emerald: { bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700', badge:'bg-emerald-100 text-emerald-700', bar:'bg-emerald-500', iconBg:'bg-emerald-100' },
   blue:    { bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700',    badge:'bg-blue-100 text-blue-700',       bar:'bg-blue-500',    iconBg:'bg-blue-100'    },
+  indigo:  { bg:'bg-indigo-50',  border:'border-indigo-200',  text:'text-indigo-700',  badge:'bg-indigo-100 text-indigo-700',   bar:'bg-indigo-500',  iconBg:'bg-indigo-100'  },
   orange:  { bg:'bg-orange-50',  border:'border-orange-200',  text:'text-orange-700',  badge:'bg-orange-100 text-orange-700',   bar:'bg-orange-400',  iconBg:'bg-orange-100'  },
   amber:   { bg:'bg-amber-50',   border:'border-amber-200',   text:'text-amber-700',   badge:'bg-amber-100 text-amber-700',     bar:'bg-amber-400',   iconBg:'bg-amber-100'   },
   rose:    { bg:'bg-rose-50',    border:'border-rose-200',    text:'text-rose-700',    badge:'bg-rose-100 text-rose-700',       bar:'bg-rose-400',    iconBg:'bg-rose-100'    },
@@ -58,6 +61,8 @@ export const TypeBadge = ({ type }) => {
 export const ImpactLabel = ({ type }) => {
   if (type === CONFIG.termTimeLeaveType)
     return <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><School size={11}/>Adds to holiday work target</span>;
+  if (type === CONFIG.termTimeWorkType || type === CONFIG._legacyTermTimeWorkType || type === CONFIG.extraHoursType)
+    return <span className="inline-flex items-center gap-1 text-xs text-indigo-600 font-medium"><Clock size={11}/>Earns Time Off in Lieu credit</span>;
   return isDeductible(type)
     ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><TrendingDown size={11}/>Counts toward allowance</span>
     : <span className="inline-flex items-center gap-1 text-xs text-gray-400 font-medium"><Info size={11}/>Recorded only (no deduction)</span>;
@@ -85,8 +90,15 @@ export const TypeNote = ({ type, currentHolidayYear, startDate }) => {
             : type === CONFIG.toiLeaveType
             ? <><Coffee size={13} className="text-orange-500 mt-0.5 flex-shrink-0"/>
                 <span className="text-orange-700">
-                  <strong>Time Off in Lieu</strong> uses days you have earned by working school holidays.
-                  If you have not earned enough yet, the shortfall will be added to your working target.
+                  <strong>Time Off in Lieu</strong> uses days you have earned through extra hours worked.
+                  If you have not earned enough credit yet, your manager may adjust the approval.
+                </span></>
+            : type === CONFIG.extraHoursType
+            ? <><Clock size={13} className="text-indigo-500 mt-0.5 flex-shrink-0"/>
+                <span className="text-indigo-700">
+                  <strong>Extra Hours Worked</strong> logs additional hours you have worked beyond your normal hours.
+                  Once approved by your manager, these hours will build up your Time Off in Lieu credit.
+                  Enter the number of hours below — they will be converted to days automatically.
                 </span></>
             : type === 'Unpaid'
             ? <><Ban size={13} className="text-gray-400 mt-0.5 flex-shrink-0"/>
@@ -108,7 +120,7 @@ export const TypeNote = ({ type, currentHolidayYear, startDate }) => {
         <div className="rounded-lg px-3 py-2 flex items-start gap-2 text-xs bg-indigo-50 border border-indigo-100">
           <CalendarDays size={13} className="text-indigo-500 mt-0.5 flex-shrink-0"/>
           <span className="text-indigo-700">
-            This date falls in the <strong>next holiday year</strong> and will count against next year's allowance.
+            This date falls in the <strong>next holiday year</strong> and will count against the next year allowance.
           </span>
         </div>
       )}
@@ -126,7 +138,8 @@ const statusStyle = {
 const EmployeeView = ({
   user, requests, formData, setFormData, submitRequest,
   amITermTime, myStats, myDaysTaken, myAllowance, myTOILBalance,
-  currentHolidayYear, myCarryForwardDays, termDates
+  currentHolidayYear, myCarryForwardDays, termDates, myWorkingDays,
+  systemSettings
 }) => {
   const [historyFilter, setHistoryFilter] = useState('all');
 
@@ -148,9 +161,16 @@ const EmployeeView = ({
   );
   const nextYearDays = nextYearBooked.reduce((t, r) => t + Number(r.daysCount || 0), 0);
 
-  /* absences recorded only (not deductible, not term-time leave) */
+  /* absences recorded only — exclude TOIL/work types shown in the balance cards */
   const recordedByType = thisYearApproved
-    .filter(r => !isDeductible(r.type) && r.type !== CONFIG.termTimeLeaveType)
+    .filter(r =>
+      !isDeductible(r.type) &&
+      r.type !== CONFIG.termTimeLeaveType &&
+      r.type !== CONFIG.termTimeWorkType &&
+      r.type !== CONFIG._legacyTermTimeWorkType &&
+      r.type !== CONFIG.extraHoursType &&
+      r.type !== CONFIG.toiLeaveType
+    )
     .reduce((acc, r) => {
       const key = r.type === CONFIG._legacyProfDevType ? 'CPD' : r.type;
       acc[key] = (acc[key] || 0) + Number(r.daysCount || 0);
@@ -166,8 +186,6 @@ const EmployeeView = ({
                     : historyFilter === 'nextyear' ? nextYearBooked
                     :                               myRequests.filter(r => r.type === historyFilter);
 
-  const allowancePct = myAllowance > 0 ? Math.min(100, (myDaysTaken / myAllowance) * 100) : 0;
-
   /* normalise TT balance defensively */
   const toil = myTOILBalance
     ? {
@@ -178,11 +196,21 @@ const EmployeeView = ({
         target:             Number(myTOILBalance.target)             || 30,
         effectiveTarget:    Number(myTOILBalance.effectiveTarget)    || Number(myTOILBalance.target) || 30,
         termTimeLeaveTaken: Number(myTOILBalance.termTimeLeaveTaken) || 0,
+        hoursPerDay:        Number(myTOILBalance.hoursPerDay)        || 8,
+        accruedHours:       Number(myTOILBalance.accruedHours)       || 0,
+        usedHours:          Number(myTOILBalance.usedHours)          || 0,
+        creditHours:        Number(myTOILBalance.creditHours)        || 0,
       }
     : null;
 
   const creditPct       = toil?.accrued > 0 ? Math.min(100, (toil.used    / toil.accrued)         * 100) : 0;
   const workProgressPct = toil?.effectiveTarget > 0 ? Math.min(100, (toil.accrued / toil.effectiveTarget) * 100) : 0;
+
+  // For non-TT staff: approved extra hours build TOIL credit that adds directly to the leave balance.
+  // TT staff keep their own separate school holiday balance — not merged here.
+  const myToilCredit        = !amITermTime ? Math.max(0, toil?.credit ?? 0) : 0;
+  const myEffectiveAllowance = myAllowance + myToilCredit;
+  const allowancePct         = myEffectiveAllowance > 0 ? Math.min(100, (myDaysTaken / myEffectiveAllowance) * 100) : 0;
 
   /* ── BOOKING WARNING ─────────────────────────────────────── */
   const proposedDays = useMemo(() => {
@@ -192,15 +220,29 @@ const EmployeeView = ({
       formData.startDate,
       formData.endDate || formData.startDate,
       formData.isHalfDay,
-      termDates || []
+      termDates || [],
+      myWorkingDays
     );
-  }, [formData.startDate, formData.endDate, formData.isHalfDay, termDates]);
+  }, [formData.startDate, formData.endDate, formData.isHalfDay, termDates, myWorkingDays]);
 
-  const remaining         = myAllowance - myDaysTaken;
+  const remaining          = myEffectiveAllowance - myDaysTaken;
   const projectedRemaining = isDeductible(formData.type) ? remaining - proposedDays : null;
 
+  // Check if requested dates fall in term time or school holidays
+  const termTimeWarning = useMemo(() => {
+    if (!formData.startDate) return null;
+    const start = formData.startDate;
+    const end   = formData.endDate || formData.startDate;
+    const tStarts = (termDates || []).filter(t => t.type === 'Term Start').map(t => t.date).sort();
+    const tEnds   = (termDates || []).filter(t => t.type === 'Term End').map(t => t.date).sort();
+    const tRanges = tStarts.map(s => { const e = tEnds.find(e => e >= s); return e ? {start: s, end: e} : null; }).filter(Boolean);
+    if (tRanges.some(r => start <= r.end && end >= r.start)) return 'term';
+    if ((termDates || []).some(t => t.type === 'School Holiday' && t.date >= start && t.date <= end)) return 'holiday';
+    return null;
+  }, [formData.startDate, formData.endDate, termDates]);
+
   const BookingWarning = () => {
-    if (proposedDays <= 0) return null;
+    if (proposedDays <= 0 && !termTimeWarning) return null;
 
     /* Standard staff: Annual Leave exceeding allowance */
     if (!amITermTime && isDeductible(formData.type)) {
@@ -227,8 +269,8 @@ const EmployeeView = ({
       }
     }
 
-    /* Term-time staff: TOIL exceeding credit */
-    if (amITermTime && formData.type === CONFIG.toiLeaveType && toil) {
+    /* Any staff: TOIL exceeding credit */
+    if (formData.type === CONFIG.toiLeaveType && toil) {
       if (proposedDays > toil.credit) {
         const shortfall = proposedDays - toil.credit;
         return (
@@ -236,11 +278,32 @@ const EmployeeView = ({
             <AlertCircle size={14} className="text-red-500 mt-0.5 flex-shrink-0"/>
             <div className="text-xs text-red-700">
               <strong>Insufficient credit.</strong> You have {toil.credit}d available but this request is for {proposedDays}d.
-              If approved, {shortfall}d will be added to your working target.
+              {amITermTime && ` If approved, ${shortfall}d will be added to your working target.`}
             </div>
           </div>
         );
       }
+    }
+
+    /* Term time / school holiday warning */
+    if (termTimeWarning === 'term') {
+      return (
+        <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 flex gap-2 items-start">
+          <AlertCircle size={14} className="text-amber-500 mt-0.5 flex-shrink-0"/>
+          <p className="text-xs text-amber-700">
+            <strong>Term time dates.</strong> Your request falls during school term time.
+            Your manager will be notified to arrange cover before approving.
+          </p>
+        </div>
+      );
+    }
+    if (termTimeWarning === 'holiday') {
+      return (
+        <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 flex gap-2 items-start">
+          <AlertCircle size={14} className="text-blue-500 mt-0.5 flex-shrink-0"/>
+          <p className="text-xs text-blue-700">These dates fall during a recorded school holiday period.</p>
+        </div>
+      );
     }
 
     return null;
@@ -265,7 +328,9 @@ const EmployeeView = ({
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Annual Leave</p>
-                <p className="text-xs text-gray-500 mt-0.5">Your {myAllowance} day allowance for this year</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {myAllowance}d allowance{myToilCredit > 0 ? ` + ${myToilCredit}d extra hours = ${myEffectiveAllowance}d total` : ' for this year'}
+                </p>
               </div>
               <div className={`p-2 rounded-lg ${remaining < 0 ? 'bg-red-100' : 'bg-emerald-100'}`}>
                 <CalendarDays size={18} className={remaining < 0 ? 'text-red-500' : 'text-emerald-600'}/>
@@ -276,7 +341,7 @@ const EmployeeView = ({
                 {Math.abs(remaining)}
               </span>
               <span className="text-lg text-gray-400 mb-1">
-                {remaining < 0 ? 'days over limit' : `of ${myAllowance} days remaining`}
+                {remaining < 0 ? 'days over limit' : `of ${myEffectiveAllowance} days remaining`}
               </span>
             </div>
             <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
@@ -286,12 +351,17 @@ const EmployeeView = ({
               />
             </div>
             <div className="flex justify-between text-xs text-gray-400 mt-1.5">
-              <span>{myDaysTaken}d used this year</span>
+              <span>{myDaysTaken}d annual leave used this year</span>
               <span>{remaining < 0 ? `${Math.abs(remaining)}d over` : `${remaining}d left`}</span>
             </div>
             {myCarryForwardDays > 0 && (
               <p className="mt-2 text-xs text-indigo-600 font-medium flex items-center gap-1">
                 <CheckCircle2 size={11}/>Includes {myCarryForwardDays}d carried forward from last year
+              </p>
+            )}
+            {myToilCredit > 0 && (
+              <p className="mt-1.5 text-xs text-orange-600 font-medium flex items-center gap-1">
+                <CheckCircle2 size={11}/>{myToilCredit}d added from approved extra hours worked
               </p>
             )}
             {remaining < 0 && (
@@ -305,6 +375,32 @@ const EmployeeView = ({
           </div>
         )}
 
+        {/* ── STANDARD STAFF: EXTRA HOURS INFO STRIP ─────────────────────────
+             Shows a breakdown when there is any extra-hours activity.
+             The TOIL credit is already merged into the annual leave balance above,
+             so this is informational only — no separate balance to manage. ── */}
+        {!amITermTime && toil && (toil.accrued > 0 || toil.used > 0) && (
+          <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 flex items-start gap-3">
+            <div className="bg-orange-100 p-2 rounded-lg flex-shrink-0">
+              <Clock size={16} className="text-orange-600"/>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-orange-700 uppercase tracking-wide mb-0.5">Extra Hours Worked</p>
+              <p className="text-sm font-semibold text-orange-900">
+                {toil.accrued}d{toil.accruedHours > 0 ? ` (${toil.accruedHours}h)` : ''} earned this year
+                {toil.used > 0 ? `, ${toil.used}d taken as time off` : ''}
+              </p>
+              <p className="text-xs text-orange-600 mt-0.5">
+                {toil.credit > 0
+                  ? `${toil.credit}d credit included in your leave balance above. ${toil.hoursPerDay}h = 1 day.`
+                  : toil.credit < 0
+                  ? `You have taken ${Math.abs(toil.credit)}d more than earned. Please speak to your manager.`
+                  : 'All earned hours have been used.'}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ── NEXT YEAR PRE-BOOKED BANNER (standard staff) ── */}
         {!amITermTime && nextYearDays > 0 && (
           <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex items-start gap-3">
@@ -313,7 +409,7 @@ const EmployeeView = ({
               <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide mb-0.5">Next Holiday Year</p>
               <p className="text-sm font-semibold text-indigo-900">{nextYearDays}d already booked</p>
               <p className="text-xs text-indigo-600 mt-0.5">
-                This leave is approved and will count against next year's allowance.
+                This leave is approved and will count against the next holiday year allowance.
                 Use the filter below to view those bookings.
               </p>
             </div>
@@ -336,13 +432,20 @@ const EmployeeView = ({
                 </div>
               </div>
 
-              <div className="flex items-end gap-2 mb-3">
+              <div className="flex items-end gap-2 mb-1">
                 <span className={`text-5xl font-bold leading-none ${toil.credit < 0 ? 'text-red-600' : 'text-gray-900'}`}>
                   {Math.abs(toil.credit)}
                 </span>
-                <span className="text-lg text-gray-400 mb-1">
-                  {toil.credit < 0 ? 'days to work back' : toil.credit === 0 ? 'days (nothing yet)' : 'days available'}
-                </span>
+                <div className="mb-1">
+                  <div className="text-lg text-gray-400 leading-none">
+                    {toil.credit < 0 ? 'days to work back' : toil.credit === 0 ? 'days (nothing yet)' : 'days available'}
+                  </div>
+                  {toil.hoursPerDay && Math.abs(toil.creditHours) > 0 && (
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      = {Math.abs(toil.creditHours)}h &nbsp;·&nbsp; {toil.hoursPerDay}h per day
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden mb-1">
@@ -352,8 +455,8 @@ const EmployeeView = ({
                 />
               </div>
               <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>{toil.accrued}d earned this year</span>
-                <span>{toil.used}d taken as time off</span>
+                <span>{toil.accrued}d{toil.accruedHours > 0 ? ` (${toil.accruedHours}h)` : ''} earned this year</span>
+                <span>{toil.used}d{toil.usedHours > 0 ? ` (${toil.usedHours}h)` : ''} taken as time off</span>
               </div>
 
               {toil.credit < 0 && (
@@ -386,7 +489,12 @@ const EmployeeView = ({
 
               <div className="flex items-end gap-2 mb-2">
                 <span className="text-4xl font-bold text-gray-900 leading-none">{toil.accrued}</span>
-                <span className="text-lg text-gray-400 mb-0.5">of {toil.effectiveTarget} days</span>
+                <div className="mb-0.5">
+                  <div className="text-lg text-gray-400 leading-none">of {toil.effectiveTarget} days</div>
+                  {toil.hoursPerDay && toil.accruedHours > 0 && (
+                    <div className="text-xs text-gray-400 mt-0.5">{toil.accruedHours}h logged ({toil.hoursPerDay}h/day)</div>
+                  )}
+                </div>
               </div>
 
               <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
@@ -419,7 +527,7 @@ const EmployeeView = ({
                   <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide mb-0.5">Next Holiday Year</p>
                   <p className="text-sm font-semibold text-indigo-900">{nextYearDays}d already booked</p>
                   <p className="text-xs text-indigo-600 mt-0.5">
-                    This leave is approved and will count against next year's target.
+                    This leave is approved and will count against the next holiday year target.
                   </p>
                 </div>
               </div>
@@ -481,14 +589,45 @@ const EmployeeView = ({
             </div>
             <div className="mb-2">
               <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Absence Type</label>
-              <select value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
+              <select value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value, hoursWorked: '', sickReason: '' })}>
                 {CONFIG.leaveTypes.filter(t => {
-                  if (amITermTime) return t !== 'Annual Leave';
-                  return t !== CONFIG.toiLeaveType && t !== CONFIG.termTimeWorkType && t !== CONFIG.termTimeLeaveType;
+                  if (amITermTime) return t !== 'Annual Leave' && t !== CONFIG.extraHoursType;
+                  return t !== CONFIG.termTimeWorkType && t !== CONFIG.termTimeLeaveType;
                 }).map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
+            {/* Hours entry for Extra Hours Worked */}
+            {formData.type === CONFIG.extraHoursType && (() => {
+              const hpd = toil?.hoursPerDay || (systemSettings?.hoursPerDay) || 8;
+              const hrs = Number(formData.hoursWorked);
+              return (
+                <div className="mb-3 p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
+                  <p className="text-xs font-semibold text-indigo-700 mb-1">Hours Worked</p>
+                  <p className="text-xs text-indigo-500 mb-2">Enter the extra hours you worked — {hpd}h = 1 day credit.</p>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="0.5" max="999" step="0.5" className="w-28"
+                      placeholder={`e.g. ${hpd}`}
+                      value={formData.hoursWorked || ''}
+                      onChange={e => setFormData({ ...formData, hoursWorked: e.target.value })}
+                    />
+                    <span className="text-xs text-indigo-600 font-medium">
+                      {hrs > 0 ? `= ${(hrs / hpd).toFixed(3).replace(/\.?0+$/, '')}d credit` : 'hours'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
             <TypeNote type={formData.type} currentHolidayYear={currentHolidayYear} startDate={formData.startDate}/>
+            {formData.type === 'Sick Leave' && (
+              <div className="mb-3">
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Sickness Reason (optional)</label>
+                <input type="text" placeholder="Brief reason e.g. Flu, back pain..."
+                  maxLength={200}
+                  value={formData.sickReason || ''}
+                  onChange={e => setFormData({ ...formData, sickReason: e.target.value })}
+                />
+              </div>
+            )}
             <BookingWarning />
             <button className="btn btn-primary w-full">Submit Request</button>
           </form>
@@ -508,6 +647,9 @@ const EmployeeView = ({
         <div className="flex flex-wrap items-center gap-4 mb-3 px-1">
           <div className="flex items-center gap-1.5 text-xs text-gray-500">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>Counts toward allowance
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-indigo-600">
+            <span className="w-2 h-2 rounded-full bg-indigo-400"></span>Earns TOIL credit
           </div>
           <div className="flex items-center gap-1.5 text-xs text-amber-600">
             <span className="w-2 h-2 rounded-full bg-amber-400"></span>Adds to working target
@@ -567,7 +709,10 @@ const EmployeeView = ({
                     {isTTLeave  && <span className="text-xs text-amber-600 italic">adds to working target</span>}
                     {!counts && !isTTLeave && !isNextYear && <span className="text-xs text-gray-400 italic">recorded only</span>}
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">{formatDateUK(r.startDate)}, {r.daysCount}d</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{formatDateUK(r.startDate)}, {isNaN(Number(r.daysCount)) ? '?' : r.daysCount}d{r.hoursWorked ? ` (${r.hoursWorked}h)` : ''}</p>
+                  {r.sickReason && r.type === 'Sick Leave' && (
+                    <p className="text-xs text-rose-500 mt-0.5">Reason: {r.sickReason}</p>
+                  )}
                 </div>
                 <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${statusStyle[r.status] ?? 'bg-gray-100 text-gray-500'}`}>
                   {r.status}

@@ -5,7 +5,7 @@ import {
   query, where, getDocs, writeBatch, setDoc
 } from 'firebase/firestore';
 import { getAuth, signInWithPopup, OAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Megaphone } from 'lucide-react';
+import { Megaphone, Maximize2, Minimize2 } from 'lucide-react';
 
 import CONFIG from './config.js';
 import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail } from './utils/helpers.js';
@@ -32,6 +32,7 @@ const App = () => {
   const [myDept, setMyDept] = useState('');
   const [myAllowance, setMyAllowance] = useState(CONFIG.defaultAllowance);
   const [amITermTime, setAmITermTime] = useState(false);
+  const [myWorkingDays, setMyWorkingDays] = useState([1, 2, 3, 4, 5]);
   const [graphToken, setGraphToken] = useState(null);
 
   const [staffList, setStaffList] = useState([]);
@@ -56,12 +57,17 @@ const App = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [expandedRow, setExpandedRow] = useState(null);
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  
+  // New state for Calendar expansion
+  const [isCalendarExpanded, setIsCalendarExpanded] = useState(false);
 
-  const [formData, setFormData] = useState({ startDate: '', endDate: '', type: 'Annual Leave', isHalfDay: false });
-  const [newStaff, setNewStaff] = useState({ name: '', email: '', department: CONFIG.defaultDepartments[0], role: 'Staff', allowance: CONFIG.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0 });
-  const [manualLeave, setManualLeave] = useState({ employeeId: '', type: CONFIG.leaveTypes[0], startDate: '', endDate: '', isHalfDay: false, approvalSubType: '' });
+  const [formData, setFormData] = useState({ startDate: '', endDate: '', type: 'Annual Leave', isHalfDay: false, hoursWorked: '', sickReason: '' });
+  const [newStaff, setNewStaff] = useState({ name: '', email: '', department: CONFIG.defaultDepartments[0], role: 'Staff', allowance: CONFIG.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0, workingDays: [], hoursPerDay: null });
+  const [manualLeave, setManualLeave] = useState({ employeeId: '', type: CONFIG.leaveTypes[0], startDate: '', endDate: '', isHalfDay: false, approvalSubType: '', silentEmail: false, hoursWorked: '', sickReason: '' });
   const [newDeptName, setNewDeptName] = useState('');
-  const [newTermDate, setNewTermDate] = useState({ description: '', date: '', type: 'Term Start' });
+  const [newTermDate, setNewTermDate] = useState({ description: '', date: '', type: 'INSET Day' });
+  const [schoolTerms, setSchoolTerms] = useState([]);
+  const [newSchoolTerm, setNewSchoolTerm] = useState({ academicYear: '', autumnStart: '', autumnEnd: '', autumnHalfTermStart: '', autumnHalfTermEnd: '', springStart: '', springEnd: '', springHalfTermStart: '', springHalfTermEnd: '', summerStart: '', summerEnd: '', summerHalfTermStart: '', summerHalfTermEnd: '' });
   const [newAnnouncement, setNewAnnouncement] = useState({ message: '', expiry: '' });
 
   // ─── INACTIVITY LOGOUT ────────────────────────────────────────────────────
@@ -124,6 +130,7 @@ const App = () => {
         setMyDept(profile.department || '');
         setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
         setAmITermTime(profile.isTermTime || false);
+        setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
         if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
         else setFormData(p => ({ ...p, type: 'Annual Leave' }));
       }
@@ -140,13 +147,14 @@ const App = () => {
     });
 
     const unsubDates = onSnapshot(subCol('termDates'), (snap) => setTermDates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubSchoolTerms = onSnapshot(subCol('schoolTerms'), (snap) => setSchoolTerms(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.academicYear || '').localeCompare(b.academicYear || ''))));
     const unsubAnnounce = onSnapshot(subCol('announcements'), (snap) => setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubSettings = onSnapshot(
       doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'settings', 'global'),
       (snap) => { if (snap.exists()) setSystemSettings(prev => ({ ...prev, ...snap.data() })); }
     );
 
-    return () => { unsubStaff(); unsubReqs(); unsubDepts(); unsubDates(); unsubAnnounce(); unsubSettings(); };
+    return () => { unsubStaff(); unsubReqs(); unsubDepts(); unsubDates(); unsubSchoolTerms(); unsubAnnounce(); unsubSettings(); };
   }, [user]);
 
   const addNotification = (msg) => {
@@ -156,14 +164,11 @@ const App = () => {
   };
 
   // ─── EMAIL HELPERS ────────────────────────────────────────────────────────
-  // Returns dept head emails for a dept — excludes archived staff
   const getDeptHeadEmails = (dept) =>
     staffList
       .filter(s => s.role === 'Dept Head' && s.department === dept && !s.isArchived)
       .map(s => s.email);
 
-  // Returns emails for admins who are also in the given dept (e.g. Hitesh in IT)
-  // plus all super admins — excludes archived
   const getAdminEmailsForDept = (dept) => {
     const adminInDept = staffList
       .filter(s => !s.isArchived && (
@@ -174,29 +179,26 @@ const App = () => {
     return adminInDept;
   };
 
-  // Returns all active (non-archived) recipients for a dept notification
   const getNotificationRecipients = (dept) => {
     const deptHeads = getDeptHeadEmails(dept);
     const adminsInDept = getAdminEmailsForDept(dept);
     return [...new Set([...deptHeads, ...adminsInDept])];
   };
 
-  // Check if an email belongs to an archived staff member
   const isEmailArchived = (email) => {
     const staff = staffList.find(s => s.email?.toLowerCase() === email?.toLowerCase());
     return staff ? staff.isArchived : false;
   };
 
-  // Compute current holiday year range — default start 1 Sep, configurable in admin settings
   const currentHolidayYear = useMemo(() => {
-    const m = (systemSettings.holidayYearStartMonth || 9) - 1; // 0-indexed
+    const m = (systemSettings.holidayYearStartMonth || 9) - 1; 
     const d = systemSettings.holidayYearStartDay || 1;
     const now = new Date();
     let startYear = now.getFullYear();
     if (now < new Date(startYear, m, d)) startYear -= 1;
     const s = new Date(startYear, m, d);
     const e = new Date(startYear + 1, m, d);
-    e.setDate(e.getDate() - 1); // day before next year's start
+    e.setDate(e.getDate() - 1); 
     const fmt = (dt) => dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     return {
       start: s.toISOString().split('T')[0],
@@ -216,22 +218,12 @@ const App = () => {
     ).reduce((t, r) => t + Number(r.daysCount || 0), 0);
   }, [requests, currentHolidayYear]);
 
-  // Term-time balance:
-  //   accrued         = holiday working days logged this year (counts toward target)
-  //   used            = days taken using TOIL credit (deducted from accrued)
-  //   toilBalance     = accrued − used  (credit available for time off)
-  //   daysOwed        = days approved as "Time in Lieu (Owe Back)" — must be worked back
-  //   target          = holiday working days required (default 30, configurable)
-  // Term-time TOIL balance:
-  //   accrued      = holiday working days logged (Holiday Work (Accrued)) — builds their credit
-  //   used         = Time Off in Lieu taken (approved as TOIL subtype) — draws from credit
-  //   credit       = accrued − used  (positive = available days; negative = in debt)
-  //   daysOwed     = max(0, used − accrued)  — only when they've taken more than earned
-  //   target       = holiday work days required this year (per-staff or global default)
-  //   remainingToWork = max(0, target − accrued)  — days still to log
-  const getTOILBalance = useCallback((email, staffTarget) => {
-    const baseTarget = Number((staffTarget != null && staffTarget > 0 ? staffTarget : null) ?? systemSettings?.termTimeDaysTarget ?? 30) || 30;
-    const empty = { accrued: 0, used: 0, credit: 0, balance: 0, toilBalance: 0, daysOwed: 0, target: baseTarget, effectiveTarget: baseTarget, termTimeLeaveTaken: 0, remainingToWork: baseTarget };
+  const getTOILBalance = useCallback((email, staffTarget, staffHoursPerDay, isTermTime = true) => {
+    const hpd = Number(staffHoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
+    const baseTarget = isTermTime
+      ? (Number((staffTarget != null && staffTarget > 0 ? staffTarget : null) ?? systemSettings?.termTimeDaysTarget ?? 30) || 30)
+      : 0;
+    const empty = { accrued: 0, used: 0, credit: 0, balance: 0, toilBalance: 0, daysOwed: 0, target: baseTarget, effectiveTarget: baseTarget, termTimeLeaveTaken: 0, remainingToWork: baseTarget, hoursPerDay: hpd, accruedHours: 0, usedHours: 0, creditHours: 0, isTermTime };
     if (!email || !currentHolidayYear?.start) return empty;
     const approved = requests.filter(r =>
       r.employeeEmail === email &&
@@ -239,41 +231,42 @@ const App = () => {
       r.startDate >= currentHolidayYear.start &&
       r.startDate <= currentHolidayYear.end
     );
-    // Days earned working school holidays — support legacy type name 'Holiday Work (Accrued)'
-    const accrued = approved
-      .filter(r => r.type === CONFIG.termTimeWorkType || r.type === CONFIG._legacyTermTimeWorkType)
-      .reduce((t, r) => t + (Number(r.daysCount) || 0), 0);
-    // Time Off in Lieu taken (draws from earned credit)
+    const accrued = isTermTime
+      ? approved.filter(r => r.type === CONFIG.termTimeWorkType || r.type === CONFIG._legacyTermTimeWorkType).reduce((t, r) => t + (Number(r.daysCount) || 0), 0)
+      : approved.filter(r => r.type === CONFIG.extraHoursType).reduce((t, r) => t + (Number(r.daysCount) || 0), 0);
     const used = approved
       .filter(r => r.type === CONFIG.toiLeaveType || r.approvalSubType === 'TOIL')
       .reduce((t, r) => t + (Number(r.daysCount) || 0), 0);
-    // Term Time Leave (absence during school term) — each day approved adds to the working target
-    const termTimeLeaveTaken = approved
-      .filter(r => r.type === CONFIG.termTimeLeaveType)
-      .reduce((t, r) => t + (Number(r.daysCount) || 0), 0);
-    const effectiveTarget = baseTarget + termTimeLeaveTaken;  // actual target = base + any term-time absences
-    const credit   = accrued - used;                          // positive = days available, negative = overdrawn
-    const daysOwed = Math.max(0, used - accrued);             // debt only when overdrawn
+    const termTimeLeaveTaken = isTermTime
+      ? approved.filter(r => r.type === CONFIG.termTimeLeaveType).reduce((t, r) => t + (Number(r.daysCount) || 0), 0)
+      : 0;
+    const effectiveTarget = baseTarget + termTimeLeaveTaken;  
+    const credit   = accrued - used;                          
+    const daysOwed = Math.max(0, used - accrued);             
+    const round1 = (n) => Math.round(n * 10) / 10;
     return {
       accrued,
       used,
       credit,
-      toilBalance: credit,         // alias — backwards compat
-      balance:     credit,         // alias — backwards compat
+      toilBalance: credit,         
+      balance:     credit,         
       daysOwed,
       target:          baseTarget,
-      effectiveTarget,             // = baseTarget + termTimeLeaveTaken
+      effectiveTarget,             
       termTimeLeaveTaken,
-      remainingToWork: Math.max(0, effectiveTarget - accrued),
+      remainingToWork: isTermTime ? Math.max(0, effectiveTarget - accrued) : 0,
+      hoursPerDay:   hpd,
+      accruedHours:  round1(accrued * hpd),
+      usedHours:     round1(used    * hpd),
+      creditHours:   round1(credit  * hpd),
+      isTermTime,
     };
   }, [requests, currentHolidayYear, systemSettings]);
 
-  // Update the holiday-work target for a specific term-time staff member
   const updateStaffTarget = async (staffId, days) => {
     await updateDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'staff', staffId), { termTimeDaysTarget: days });
   };
 
-  // Persist system-wide settings to Firestore (admin only)
   const updateSystemSettings = async (updates) => {
     await setDoc(
       doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'settings', 'global'),
@@ -283,29 +276,22 @@ const App = () => {
     addNotification("Settings Saved");
   };
 
-  // Given a closing date string (e.g. "2025-08-31"), derive the year-start for that closing year
   const getYearStartForClosingDate = useCallback((closingDateStr) => {
     if (!closingDateStr) return currentHolidayYear.start;
-    const m = (systemSettings.holidayYearStartMonth || 9) - 1; // 0-indexed
+    const m = (systemSettings.holidayYearStartMonth || 9) - 1; 
     const d = systemSettings.holidayYearStartDay || 1;
     const closing = new Date(closingDateStr);
     let yr = closing.getFullYear();
-    // Step back one year if the configured start hasn't occurred on or before the closing date
     if (new Date(yr, m, d) > closing) yr -= 1;
     return `${yr}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }, [systemSettings.holidayYearStartMonth, systemSettings.holidayYearStartDay, currentHolidayYear.start]);
 
-  // Preview carry-forward amounts using an explicit closing date range (not currentHolidayYear)
-  // This avoids the bug where running after Sep 1 would use the empty new year's data.
-  // Also counts any Annual Leave already approved for the NEW year (pre-booked) so admins
-  // can see the full picture before confirming the reset.
   const calculateCarryForwardData = useCallback((yearStart, yearEnd) => {
     const maxCarry = systemSettings.maxCarryForwardDays ?? 5;
     return staffList
       .filter(s => !s.isArchived && !s.isTermTime)
       .map(s => {
         const effectiveAllowance = (s.allowance || 0) + (s.carryForwardDays || 0);
-        // Annual leave taken within the closing year
         const taken = requests
           .filter(r =>
             r.employeeEmail === s.email &&
@@ -315,7 +301,6 @@ const App = () => {
             r.startDate <= yearEnd
           )
           .reduce((t, r) => t + Number(r.daysCount || 0), 0);
-        // Annual leave already approved for the NEW year (pre-booked after the closing date)
         const preBooked = requests
           .filter(r =>
             r.employeeEmail === s.email &&
@@ -330,8 +315,6 @@ const App = () => {
       });
   }, [staffList, requests, systemSettings.maxCarryForwardDays, systemSettings.carryForwardEnabled]);
 
-  // Write carry-forward amounts to Firestore and stamp the reset date — no confirm() here,
-  // AdminView's preview table already acts as the confirmation step
   const applyCarryForward = async (carryData, closingDateStr) => {
     const resetDate = new Date().toISOString().split('T')[0];
     const batch = writeBatch(db);
@@ -342,7 +325,6 @@ const App = () => {
       );
     });
     await batch.commit();
-    // Record when the reset was performed and which year was closed
     await setDoc(
       doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'settings', 'global'),
       { lastYearResetDate: resetDate, lastYearResetClosingDate: closingDateStr || resetDate },
@@ -406,23 +388,36 @@ const App = () => {
     if (!confirm("Confirm Request?")) return;
     const endStr = formData.isHalfDay ? formData.startDate : formData.endDate;
     if (checkForOverlap(user.email, formData.startDate, endStr)) return alert("Duplicate Booking: Record exists.");
-    const days = calculateWorkingDays(formData.startDate, formData.endDate, formData.isHalfDay, termDates);
-    if (days === 0 && !['Sick Leave', 'Compassionate', 'Medical Appt'].includes(formData.type)) return alert("Selected dates are weekends or Bank Holidays.");
+    const myHpd = Number(myProfile?.hoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
+    const hoursVal = Number(formData.hoursWorked);
+    const useHoursMode = formData.type === CONFIG.extraHoursType && hoursVal > 0;
+    const days = useHoursMode
+      ? Math.round((hoursVal / myHpd) * 1000) / 1000
+      : calculateWorkingDays(formData.startDate, formData.endDate, formData.isHalfDay, termDates, myWorkingDays);
+    if (isNaN(days) || days <= 0 && !['Sick Leave', 'Compassionate', 'Medical Appt', CONFIG.extraHoursType].includes(formData.type)) {
+      if (isNaN(days)) return alert("Invalid entry. Please check the hours or dates entered.");
+      return alert("Selected dates are weekends or Bank Holidays.");
+    }
+    
+    // SAVE FULL NAME TO FIRESTORE
+    const { hoursWorked: _hw, sickReason: _sr, ...formFields } = formData; 
     await addDoc(subCol('requests'), {
-      ...formData, employeeName: user.displayName, employeeEmail: user.email, department: myDept,
-      status: 'Pending', daysCount: days, submittedAt: new Date().toISOString()
+      ...formFields, 
+      employeeName: user.displayName, // Ensure full name is saved
+      employeeEmail: user.email, 
+      department: myDept,
+      status: 'Pending', 
+      daysCount: days, 
+      submittedAt: new Date().toISOString(),
+      ...(useHoursMode ? { hoursWorked: hoursVal, hoursPerDay: myHpd } : {}),
+      ...(formData.type === 'Sick Leave' && formData.sickReason ? { sickReason: formData.sickReason } : {})
     });
     addNotification("Request Submitted");
 
-    // Notify dept heads + admins in that dept, plus the employee's assigned approver (if set)
-    const myProfile = staffList.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
     const assignedApprover = myProfile?.approverEmail && !isEmailArchived(myProfile.approverEmail) ? myProfile.approverEmail : null;
     const baseRecipients = getNotificationRecipients(myDept);
     const recipients = [...new Set([...baseRecipients, ...(assignedApprover ? [assignedApprover] : [])])];
 
-    // Build leave balance summary rows for the email
-    // myAllowance = baseAllowance + carryForwardDays (set in auth listener line ~125)
-    // Use it directly — it is the true total entitlement for the year, matching the app card
     let balanceSummaryRows = [];
     if (!amITermTime && formData.type === 'Annual Leave') {
       const carryDays    = Number(myProfile?.carryForwardDays || 0);
@@ -442,6 +437,18 @@ const App = () => {
       ];
     }
 
+    const tStarts = termDates.filter(t => t.type === 'Term Start').map(t => t.date).sort();
+    const tEnds   = termDates.filter(t => t.type === 'Term End').map(t => t.date).sort();
+    const tRanges = tStarts.map(s => { const e = tEnds.find(e => e >= s); return e ? { start: s, end: e } : null; }).filter(Boolean);
+    const reqStart = formData.startDate;
+    const reqEnd   = endStr;
+    const isInTermTime     = tRanges.some(r => reqStart <= r.end && reqEnd >= r.start);
+    const isInSchoolHoliday = termDates.some(t => t.type === 'School Holiday' && t.date >= reqStart && t.date <= reqEnd);
+    const termFlagRows = [
+      ...(isInTermTime     ? [{ label: 'Term Time Alert',   value: 'This request falls during school term time — please check cover arrangements before approving.', highlight: 'amber' }] : []),
+      ...(isInSchoolHoliday ? [{ label: 'School Holiday',  value: 'This request overlaps a recorded school holiday period.', highlight: 'amber' }] : []),
+    ];
+
     await sendEmail(graphToken, recipients,
       `New Leave Request: ${user.displayName}`,
       '🗓️ New Leave Request',
@@ -454,6 +461,7 @@ const App = () => {
         { label: 'End Date', value: formData.isHalfDay ? 'Half Day' : formatDateUK(formData.endDate) },
         { label: 'Days', value: `${days} day(s)` },
         { label: 'Status', value: 'Pending Approval' },
+        ...termFlagRows,
         ...balanceSummaryRows
       ],
       'Please review this request.'
@@ -461,7 +469,6 @@ const App = () => {
   };
 
   const handleApproval = async (id, status, approvalSubType = null) => {
-    // Time Off in Lieu draws from the employee's accrued holiday-work credit (like using allowance)
     const reqForApproval = requests.find(r => r.id === id);
     if (status === 'Approved' && reqForApproval?.type === CONFIG.toiLeaveType && !approvalSubType) {
       approvalSubType = 'TOIL';
@@ -481,8 +488,6 @@ const App = () => {
         : approvalSubType === 'Unpaid' ? 'Unpaid Leave'
         : null;
 
-      // Build updated balance rows for standard Annual Leave approvals
-      // totalAllowance = base + carryForward, matching exactly what the app card shows
       let empBalanceRows = [];
       if (status === 'Approved' && req.type === 'Annual Leave') {
         const empProfile = staffList.find(s => s.email?.toLowerCase() === req.employeeEmail?.toLowerCase());
@@ -506,7 +511,6 @@ const App = () => {
         }
       }
 
-      // Only email employee if not archived
       if (!isEmailArchived(req.employeeEmail)) {
         await sendEmail(graphToken, [req.employeeEmail],
           `Your Leave Request has been ${status}`,
@@ -528,7 +532,6 @@ const App = () => {
         );
       }
 
-      // Notify dept heads + admins in dept (not archived)
       const deptRecipients = getNotificationRecipients(req.department);
       await sendEmail(graphToken, deptRecipients,
         `Leave ${status}: ${req.employeeName}`,
@@ -557,7 +560,6 @@ const App = () => {
       await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'requests', id));
       addNotification("Deleted");
       if (req) {
-        // Only email non-archived recipients
         const allRecipients = [...new Set([req.employeeEmail, ...getNotificationRecipients(req.department)])];
         const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
         await sendEmail(graphToken, activeRecipients,
@@ -587,7 +589,7 @@ const App = () => {
       await addDoc(subCol('staff'), { ...data, isArchived: false });
     }
     addNotification("Staff Saved");
-    setNewStaff({ name: '', email: '', department: departments[0], role: 'Staff', allowance: systemSettings.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0 });
+    setNewStaff({ name: '', email: '', department: departments[0], role: 'Staff', allowance: systemSettings.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0, workingDays: [], hoursPerDay: null });
     setAdminEditId(null);
   };
 
@@ -599,42 +601,99 @@ const App = () => {
     const endStr = manualLeave.isHalfDay ? manualLeave.startDate : manualLeave.endDate;
     if (checkForOverlap(staff.email, manualLeave.startDate, endStr)) return alert("Duplicate Booking.");
     if (!confirm("Confirm adding this record?")) return;
-    const days = calculateWorkingDays(manualLeave.startDate, manualLeave.endDate, manualLeave.isHalfDay, termDates);
+    const staffWorkPattern = staff.workingDays?.length ? staff.workingDays : [1, 2, 3, 4, 5];
+    const hpd = Number(staff.hoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
+    const hoursEntered = Number(manualLeave.hoursWorked);
+    const useHoursMode = (manualLeave.type === CONFIG.termTimeWorkType || manualLeave.type === CONFIG.extraHoursType) && hoursEntered > 0;
+    const days = useHoursMode
+      ? Math.round((hoursEntered / hpd) * 1000) / 1000
+      : calculateWorkingDays(manualLeave.startDate, manualLeave.endDate, manualLeave.isHalfDay, termDates, staffWorkPattern);
+    if (isNaN(days) || days < 0) return alert("Invalid days count. Please check the dates and hours entered.");
     const manualRecord = {
-      employeeName: staff.name, employeeEmail: staff.email, department: staff.department,
+      employeeName: staff.name, // Ensure full name is preserved
+      employeeEmail: staff.email, 
+      department: staff.department,
       type: manualLeave.type, startDate: manualLeave.startDate, endDate: manualLeave.endDate,
       isHalfDay: manualLeave.isHalfDay,
-      status: 'Approved', daysCount: days, submittedAt: new Date().toISOString()
+      status: 'Approved', daysCount: days, submittedAt: new Date().toISOString(),
+      ...(useHoursMode ? { hoursWorked: hoursEntered, hoursPerDay: hpd } : {}),
+      ...(manualLeave.sickReason && manualLeave.type === 'Sick Leave' ? { sickReason: manualLeave.sickReason } : {})
     };
     if (manualLeave.approvalSubType) manualRecord.approvalSubType = manualLeave.approvalSubType;
     await addDoc(subCol('requests'), manualRecord);
     addNotification("Absence Recorded");
 
-    // Only email non-archived recipients
-    const allRecipients = [...new Set([staff.email, ...getNotificationRecipients(staff.department)])];
-    const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
-    await sendEmail(graphToken, activeRecipients,
-      `Absence Recorded: ${staff.name}`,
-      '📋 Absence Manually Recorded',
-      '#1d4ed8',
-      [
-        { label: 'Employee', value: staff.name },
-        { label: 'Department', value: staff.department },
-        { label: 'Leave Type', value: manualLeave.type },
-        { label: 'Start Date', value: formatDateUK(manualLeave.startDate) },
-        { label: 'End Date', value: manualLeave.isHalfDay ? 'Half Day' : formatDateUK(manualLeave.endDate) },
-        { label: 'Days', value: `${days} day(s)` },
-        { label: 'Recorded By', value: user.displayName }
-      ],
-      'This absence has been manually recorded in the GSG HR Portal by an administrator.'
-    );
+    if (!manualLeave.silentEmail) {
+      const allRecipients = [...new Set([staff.email, ...getNotificationRecipients(staff.department)])];
+      const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
+      await sendEmail(graphToken, activeRecipients,
+        `Absence Recorded: ${staff.name}`,
+        '📋 Absence Manually Recorded',
+        '#1d4ed8',
+        [
+          { label: 'Employee', value: staff.name },
+          { label: 'Department', value: staff.department },
+          { label: 'Leave Type', value: manualLeave.type },
+          { label: 'Start Date', value: formatDateUK(manualLeave.startDate) },
+          { label: 'End Date', value: manualLeave.isHalfDay ? 'Half Day' : formatDateUK(manualLeave.endDate) },
+          { label: 'Days', value: useHoursMode ? `${days} day(s) (${hoursEntered}h @ ${hpd}h/day)` : `${days} day(s)` },
+          { label: 'Recorded By', value: user.displayName }
+        ],
+        'This absence has been manually recorded in the GSG HR Portal by an administrator.'
+      );
+    }
+    setManualLeave(p => ({ ...p, silentEmail: false, hoursWorked: '', sickReason: '' })); 
+  };
+
+  const handleDeleteSilentImports = async () => {
+    const silentRecords = requests.filter(r => r.importedSilently === true);
+    if (!silentRecords.length) return alert('No silently imported records found to delete.');
+    if (!confirm(`This will permanently delete all ${silentRecords.length} silently imported record${silentRecords.length !== 1 ? 's' : ''}. This cannot be undone — continue?`)) return;
+    const batch = writeBatch(db);
+    silentRecords.forEach(r => {
+      batch.delete(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'requests', r.id));
+    });
+    await batch.commit();
+    addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
+  };
+
+  const handleBulkImport = async (records) => {
+    const results = { imported: 0, skipped: 0, errors: [] };
+    for (const rec of records) {
+      try {
+        const staff = staffList.find(s => s.email?.toLowerCase() === rec.email?.toLowerCase());
+        if (!staff) { results.errors.push(`${rec.email}: not found in staff list`); results.skipped++; continue; }
+        const endDate = rec.endDate || rec.startDate;
+        if (checkForOverlap(staff.email, rec.startDate, endDate)) {
+          results.errors.push(`${staff.name} (${rec.startDate}): overlaps an existing record — skipped`);
+          results.skipped++; continue;
+        }
+        const days = rec.daysCount ? Number(rec.daysCount)
+          : calculateWorkingDays(rec.startDate, endDate, false, termDates);
+        if (days <= 0) {
+          results.errors.push(`${staff.name} (${rec.startDate}): 0 working days — is this a weekend or bank holiday?`);
+          results.skipped++; continue;
+        }
+        await addDoc(subCol('requests'), {
+          employeeName: staff.name, employeeEmail: staff.email, department: staff.department,
+          type: rec.type || 'Annual Leave', startDate: rec.startDate, endDate,
+          isHalfDay: false, status: 'Approved', daysCount: days,
+          submittedAt: new Date().toISOString(), importedSilently: true
+        });
+        results.imported++;
+      } catch (err) {
+        results.errors.push(`${rec.email} (${rec.startDate}): ${err.message}`);
+        results.skipped++;
+      }
+    }
+    return results;
   };
 
   const handleStaffSelect = (e) => {
     const staffId = e.target.value;
     const staff = staffList.find(s => s.id === staffId);
     const defaultType = staff?.isTermTime ? CONFIG.termTimeWorkType : 'Annual Leave';
-    setManualLeave({ ...manualLeave, employeeId: staffId, type: defaultType, approvalSubType: '' });
+    setManualLeave({ ...manualLeave, employeeId: staffId, type: defaultType, approvalSubType: '', hoursWorked: '', sickReason: '' });
   };
 
   const searchDirectory = async (query) => {
@@ -661,7 +720,6 @@ const App = () => {
     }
   };
 
-  // Permanently delete a staff member from Firestore (only available for archived users)
   const permanentlyDeleteStaff = async (id, name) => {
     if (!confirm(`⚠️ PERMANENTLY DELETE ${name}?\n\nThis will remove them from the system completely. This cannot be undone.\n\nAre you absolutely sure?`)) return;
     await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'staff', id));
@@ -673,7 +731,7 @@ const App = () => {
       name: staff.name, email: staff.email, department: staff.department,
       role: staff.role, allowance: staff.allowance, isTermTime: staff.isTermTime || false,
       approverEmail: staff.approverEmail || '', carryForwardDays: staff.carryForwardDays || 0,
-      termTimeDaysTarget: staff.termTimeDaysTarget || 0
+      termTimeDaysTarget: staff.termTimeDaysTarget || 0, workingDays: staff.workingDays || [], hoursPerDay: staff.hoursPerDay || null
     });
     setAdminEditId(staff.id);
     document.querySelector('#admin-form')?.scrollIntoView({ behavior: 'smooth' });
@@ -709,6 +767,22 @@ const App = () => {
     }
   };
 
+  const addSchoolTerm = async () => {
+    if (!newSchoolTerm.autumnStart) return;
+    const year = newSchoolTerm.autumnStart.substring(0, 4);
+    const label = newSchoolTerm.academicYear || `${year}-${Number(year) + 1}`;
+    await addDoc(subCol('schoolTerms'), { ...newSchoolTerm, academicYear: label });
+    addNotification("School term added");
+    setNewSchoolTerm({ academicYear: '', autumnStart: '', autumnEnd: '', autumnHalfTermStart: '', autumnHalfTermEnd: '', springStart: '', springEnd: '', springHalfTermStart: '', springHalfTermEnd: '', summerStart: '', summerEnd: '', summerHalfTermStart: '', summerHalfTermEnd: '' });
+  };
+
+  const deleteSchoolTerm = async (id) => {
+    if (confirm("Delete this school year's term dates?")) {
+      await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'schoolTerms', id));
+      addNotification("School term deleted");
+    }
+  };
+
   const importBankHolidays = async () => {
     if (!confirm("Import UK Holidays?")) return;
     const hols = generateUKBankHolidays(2025).concat(generateUKBankHolidays(2026));
@@ -732,7 +806,6 @@ const App = () => {
     }
   };
 
-  // ─── CSV EXPORT ───────────────────────────────────────────────────────────
   const exportCSV = (filename, headers, rows) => {
     const escape = (v) => {
       const s = String(v ?? '');
@@ -785,7 +858,6 @@ const App = () => {
     if (!canManage) return null;
     const tally = {};
     CONFIG.leaveTypes.forEach(t => tally[t] = 0);
-    // Filter by current holiday year and dept
     const filteredReqs = requests.filter(r =>
       r.status === 'Approved' &&
       r.startDate >= currentHolidayYear.start &&
@@ -799,7 +871,6 @@ const App = () => {
     });
     const visibleStaff = staffList.filter(s => !s.isArchived && (isAdmin ? (selectedDeptFilter === 'All' || s.department === selectedDeptFilter) : s.department === myDept));
     const individualData = visibleStaff.map(s => {
-      // breakdown keyed by leave type (normalise legacy CPD name)
       const breakdown = {};
       CONFIG.leaveTypes.forEach(t => breakdown[t] = 0);
       let total = 0, sickSpells = 0, sickDays = 0;
@@ -817,18 +888,20 @@ const App = () => {
         if (s.isTermTime) { if (r.type === CONFIG.termTimeWorkType || r.type === CONFIG._legacyTermTimeWorkType) total += Number(r.daysCount); }
         else { if (r.type === 'Annual Leave') total += Number(r.daysCount); }
         if (r.type === 'Sick Leave') { sickSpells += 1; sickDays += Number(r.daysCount); }
-        // Monthly breakdown
         const month = r.startDate?.substring(0, 7);
         if (month) {
           if (!monthlyBreakdown[month]) monthlyBreakdown[month] = {};
           monthlyBreakdown[month][typeKey] = (monthlyBreakdown[month][typeKey] || 0) + Number(r.daysCount || 0);
         }
       });
-      const effectiveAllowance = (s.allowance || 0) + (s.carryForwardDays || 0);
-      // Balance calculation
-      let remaining = null, balanceStatus = 'ok', toilBalance = null;
+      const baseEffectiveAllowance = (s.allowance || 0) + (s.carryForwardDays || 0);
+      let remaining = null, balanceStatus = 'ok', toilBalance = null, effectiveAllowance = baseEffectiveAllowance;
       if (!s.isTermTime) {
         const annualTaken = breakdown['Annual Leave'] || 0;
+        const extraAccrued    = breakdown[CONFIG.extraHoursType] || 0;
+        const toilUsed        = breakdown[CONFIG.toiLeaveType]   || 0;
+        const staffToilCredit = Math.max(0, extraAccrued - toilUsed);
+        effectiveAllowance    = baseEffectiveAllowance + staffToilCredit;
         remaining = effectiveAllowance - annualTaken;
         balanceStatus = remaining < 0 ? 'negative' : remaining <= 3 ? 'low' : 'ok';
       } else {
@@ -842,7 +915,10 @@ const App = () => {
         balanceStatus    = credit < 0 ? 'negative' : 'ok';
         toilBalance      = { accrued, used: toilUsed, credit, effectiveTarget, target: baseTarget, termTimeLeaveTaken: ttLeave, remainingToWork: Math.max(0, effectiveTarget - accrued) };
       }
-      return { ...s, effectiveAllowance, breakdown, total, bradford: (sickSpells * sickSpells) * sickDays, userRequests, monthlyBreakdown, remaining, balanceStatus, toilBalance };
+      const todayStr = new Date().toISOString().split('T')[0];
+      const annualLeaveTaken    = userRequests.filter(r => r.type === 'Annual Leave' && (r.endDate || r.startDate) < todayStr).reduce((t, r) => t + Number(r.daysCount || 0), 0);
+      const annualLeaveUpcoming = userRequests.filter(r => r.type === 'Annual Leave' && r.startDate >= todayStr).reduce((t, r) => t + Number(r.daysCount || 0), 0);
+      return { ...s, effectiveAllowance, breakdown, total, bradford: (sickSpells * sickSpells) * sickDays, userRequests, monthlyBreakdown, remaining, balanceStatus, toilBalance, annualLeaveTaken, annualLeaveUpcoming };
     });
     return { tally, individualData, yearLabel: currentHolidayYear.label };
   }, [requests, staffList, selectedDeptFilter, myRole, myDept, currentHolidayYear, systemSettings]);
@@ -852,11 +928,9 @@ const App = () => {
 
   const isAdmin = myRole === 'Admin';
   const canManage = myRole === 'Dept Head' || isAdmin;
-  // myProfile must be declared before myTOILBalance (which uses myProfile?.termTimeDaysTarget)
   const myProfile = staffList.find(s => s.email?.toLowerCase() === user?.email?.toLowerCase());
   const myCarryForwardDays = myProfile?.carryForwardDays || 0;
-  // For term-time staff: use TOIL balance (pass per-staff target if set); for regular staff: standard annual leave count
-  const myTOILBalance = amITermTime ? getTOILBalance(user?.email, myProfile?.termTimeDaysTarget) : null;
+  const myTOILBalance = getTOILBalance(user?.email, myProfile?.termTimeDaysTarget, myProfile?.hoursPerDay, amITermTime);
   const myDaysTaken = amITermTime ? 0 : getLeaveTaken(user?.email, false);
   const myStats = getAllowanceStats(myDaysTaken, myAllowance, false);
   const activeAnnouncement = announcements[0];
@@ -865,7 +939,6 @@ const App = () => {
     <ErrorBoundary>
       <div className="app-container">
 
-        {/* INACTIVITY WARNING BANNER */}
         {showInactivityWarning && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
@@ -900,7 +973,7 @@ const App = () => {
               submitRequest={submitRequest} amITermTime={amITermTime} myStats={myStats}
               myDaysTaken={myDaysTaken} myAllowance={myAllowance} myTOILBalance={myTOILBalance}
               currentHolidayYear={currentHolidayYear} myCarryForwardDays={myCarryForwardDays}
-              termDates={termDates} />
+              termDates={termDates} myWorkingDays={myWorkingDays} systemSettings={systemSettings} />
           )}
           {view === 'dept-head' && canManage && (
             <DeptHeadView requests={requests} staffList={staffList} myDept={myDept} isAdmin={isAdmin}
@@ -909,7 +982,9 @@ const App = () => {
               handleStaffSelect={handleStaffSelect} getLeaveTaken={getLeaveTaken}
               getTOILBalance={getTOILBalance} updateStaffTarget={updateStaffTarget}
               currentHolidayYear={currentHolidayYear} termDates={termDates}
-              pendingApprovalId={pendingApprovalId} setPendingApprovalId={setPendingApprovalId} />
+              schoolTerms={schoolTerms}
+              pendingApprovalId={pendingApprovalId} setPendingApprovalId={setPendingApprovalId}
+              systemSettings={systemSettings} />
           )}
           {view === 'admin' && isAdmin && (
             <AdminView staffList={staffList} requests={requests} departments={departments}
@@ -924,6 +999,9 @@ const App = () => {
               addDepartment={addDepartment} deleteDepartment={deleteDepartment}
               newTermDate={newTermDate} setNewTermDate={setNewTermDate}
               addTermDate={addTermDate} deleteTermDate={deleteTermDate}
+              schoolTerms={schoolTerms} newSchoolTerm={newSchoolTerm}
+              setNewSchoolTerm={setNewSchoolTerm} addSchoolTerm={addSchoolTerm}
+              deleteSchoolTerm={deleteSchoolTerm}
               importBankHolidays={importBankHolidays} newAnnouncement={newAnnouncement}
               setNewAnnouncement={setNewAnnouncement} postAnnouncement={postAnnouncement}
               deleteAnnouncement={deleteAnnouncement} showArchived={showArchived}
@@ -938,22 +1016,41 @@ const App = () => {
               applyCarryForward={applyCarryForward}
               getYearStartForClosingDate={getYearStartForClosingDate}
               exportStaffCSV={exportStaffCSV}
-              exportRequestsCSV={exportRequestsCSV} />
+              exportRequestsCSV={exportRequestsCSV}
+              handleBulkImport={handleBulkImport}
+              handleDeleteSilentImports={handleDeleteSilentImports}
+              silentImportCount={requests.filter(r => r.importedSilently === true).length} />
           )}
           {view === 'calendar' && (
-            <CalendarView calDate={calDate} setCalDate={setCalDate}
-              calViewMode={calViewMode} setCalViewMode={setCalViewMode}
-              selectedDate={selectedDate} setSelectedDate={setSelectedDate}
-              requests={requests} staffList={staffList} termDates={termDates}
-              bankHolidays={bankHolidays} isAdmin={isAdmin} user={user}
-              deleteRequest={deleteRequest} />
+            <div className={isCalendarExpanded ? "fixed inset-0 z-[100] bg-white p-4 overflow-auto" : "relative"}>
+              <div className="flex justify-end mb-2">
+                <button 
+                  onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-lg hover:bg-emerald-200 transition-colors shadow-sm"
+                  title={isCalendarExpanded ? "Close Full Screen" : "Pop Out Calendar"}
+                >
+                  {isCalendarExpanded ? (
+                    <><Minimize2 size={16} /> Exit Full Screen</>
+                  ) : (
+                    <><Maximize2 size={16} /> Pop Out Full Screen</>
+                  )}
+                </button>
+              </div>
+              <CalendarView calDate={calDate} setCalDate={setCalDate}
+                calViewMode={calViewMode} setCalViewMode={setCalViewMode}
+                selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+                requests={requests} staffList={staffList} termDates={termDates}
+                schoolTerms={schoolTerms} bankHolidays={bankHolidays}
+                isAdmin={isAdmin} user={user} deleteRequest={deleteRequest} />
+            </div>
           )}
           {view === 'analytics' && canManage && analyticsData && (
             <AnalyticsView analyticsData={analyticsData} departments={departments}
               isAdmin={isAdmin} selectedDeptFilter={selectedDeptFilter}
               setSelectedDeptFilter={setSelectedDeptFilter}
               currentHolidayYear={currentHolidayYear}
-              requests={requests} staffList={staffList} myDept={myDept} />
+              requests={requests} staffList={staffList} myDept={myDept}
+              termDates={termDates} />
           )}
         </div>
       </div>
