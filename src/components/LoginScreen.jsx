@@ -13,7 +13,7 @@ const LoginScreen = ({ onLogin, error }) => {
     setEntraLoading(true);
     setEntraError('');
     try {
-      console.log('📍 Calling loginWithEntra()...');
+      console.log('📍 Initializing MSAL and calling loginWithEntra()...');
       const result = await loginWithEntra();
       console.log('📍 loginWithEntra result:', result);
 
@@ -22,15 +22,15 @@ const LoginScreen = ({ onLogin, error }) => {
         localStorage.setItem('GSG_USER_EMAIL', result.user.email);
         localStorage.setItem('GSG_USER_NAME', result.user.name || '');
         localStorage.setItem('GSG_AUTH_METHOD', 'entra');
-        window.location.reload();
+        setTimeout(() => window.location.reload(), 500);
       } else {
         console.error('❌ Entra login failed:', result.error);
-        setEntraError(`Login failed: ${result.error}`);
+        setEntraError(`Login failed: ${result.error || 'Unknown error'}`);
+        setEntraLoading(false);
       }
     } catch (err) {
       console.error("❌ Entra login error:", err);
-      setEntraError(`Error: ${err.message}`);
-    } finally {
+      setEntraError(`Error: ${err.message || err}`);
       setEntraLoading(false);
     }
   };

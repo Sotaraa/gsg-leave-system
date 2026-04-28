@@ -25,12 +25,14 @@ const msalConfig = {
       ? window.location.origin
       : 'http://localhost:5173',
     knownAuthorities: ['login.microsoftonline.com'], // Trusted authorities
+    navigateToLoginRequestUrl: false,
   },
   cache: {
     cacheLocation: 'localStorage',
     storeAuthStateInCookie: false,
   },
   system: {
+    allowNativeBroker: false,
     loggerOptions: {
       loggerCallback: () => {}, // Suppress verbose logging
     },
@@ -44,18 +46,38 @@ const scopes = {
 };
 
 let msalInstance = null;
+let initPromise = null;
 
-export const getMsalInstance = () => {
+export const getMsalInstance = async () => {
   if (!msalInstance) {
+    console.log('🔄 Creating MSAL instance...');
     msalInstance = new PublicClientApplication(msalConfig);
+
+    if (!initPromise) {
+      console.log('🔄 Initializing MSAL...');
+      initPromise = msalInstance.initialize().then(() => {
+        console.log('✅ MSAL initialized successfully');
+        return msalInstance;
+      }).catch(err => {
+        console.error('❌ MSAL initialization failed:', err);
+        throw err;
+      });
+    }
+
+    await initPromise;
   }
   return msalInstance;
 };
 
 export const loginWithEntra = async () => {
   try {
-    const instance = getMsalInstance();
+    console.log('🔵 Starting Entra login flow...');
+    const instance = await getMsalInstance();
+    console.log('📱 Triggering login popup...');
+
     const response = await instance.loginPopup(scopes.loginRequest);
+
+    console.log('✅ Login successful, user:', response.account.username);
     return {
       success: true,
       user: {
@@ -65,17 +87,17 @@ export const loginWithEntra = async () => {
       },
     };
   } catch (error) {
-    console.error('Entra login error:', error);
+    console.error('❌ Entra login error:', error);
     return {
       success: false,
-      error: error.message,
+      error: error.errorCode || error.message || 'Unknown error',
     };
   }
 };
 
 export const logoutEntra = async () => {
   try {
-    const instance = getMsalInstance();
+    const instance = await getMsalInstance();
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
       await instance.logoutPopup({
@@ -87,15 +109,19 @@ export const logoutEntra = async () => {
   }
 };
 
-export const getEntraUser = () => {
-  const instance = getMsalInstance();
-  const accounts = instance.getAllAccounts();
-  if (accounts.length > 0) {
-    return {
-      email: accounts[0].username || accounts[0].homeAccountId,
-      name: accounts[0].name,
-      account: accounts[0],
-    };
+export const getEntraUser = async () => {
+  try {
+    const instance = await getMsalInstance();
+    const accounts = instance.getAllAccounts();
+    if (accounts.length > 0) {
+      return {
+        email: accounts[0].username || accounts[0].homeAccountId,
+        name: accounts[0].name,
+        account: accounts[0],
+      };
+    }
+  } catch (error) {
+    console.error('Error getting Entra user:', error);
   }
   return null;
 };
