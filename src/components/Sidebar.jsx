@@ -1,9 +1,10 @@
 import React from 'react';
 import { User, CheckSquare, Calendar, BarChart2, Settings, LogOut, Sparkles, Lock } from 'lucide-react';
 
-const Sidebar = ({ view, setView, myRole, onShowOnboarding }) => {
+const Sidebar = ({ view, setView, myRole, onShowOnboarding, userEmail }) => {
   const isAdmin = myRole === 'Admin';
   const canManage = myRole === 'Dept Head' || isAdmin;
+  const isMasterAdmin = userEmail?.toLowerCase() === 'info@sotara.co.uk';
 
   const handleLogout = () => {
     localStorage.removeItem('GSG_USER_EMAIL');
@@ -36,14 +37,14 @@ const Sidebar = ({ view, setView, myRole, onShowOnboarding }) => {
           </div>
         )}
         {isAdmin && (
-          <>
-            <div className={`nav-item ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
-              <Settings size={18} /> Admin
-            </div>
-            <div className="nav-item text-yellow-300 hover:text-yellow-200" onClick={onShowOnboarding} style={{ cursor: 'pointer' }}>
-              <Lock size={18} /> Organizations
-            </div>
-          </>
+          <div className={`nav-item ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
+            <Settings size={18} /> Admin
+          </div>
+        )}
+        {isMasterAdmin && (
+          <div className="nav-item text-yellow-300 hover:text-yellow-200" onClick={onShowOnboarding} style={{ cursor: 'pointer' }}>
+            <Lock size={18} /> Organizations
+          </div>
         )}
       </div>
       <div className="sidebar-footer">
