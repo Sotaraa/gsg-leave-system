@@ -1,17 +1,39 @@
 import React, { useState } from 'react';
-import { LogIn, Sparkles } from 'lucide-react';
+import { LogIn, Sparkles, Loader } from 'lucide-react';
+import { loginWithEntra } from '../services/entraAuth';
 
 const LoginScreen = ({ onLogin, error }) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [entraLoading, setEntraLoading] = useState(false);
 
-  const handleLogin = async (e) => {
+  const handleEntraLogin = async () => {
+    setEntraLoading(true);
+    try {
+      const result = await loginWithEntra();
+      if (result.success) {
+        localStorage.setItem('GSG_USER_EMAIL', result.user.email);
+        localStorage.setItem('GSG_USER_NAME', result.user.name || '');
+        localStorage.setItem('GSG_AUTH_METHOD', 'entra');
+        window.location.reload();
+      } else {
+        console.error('Entra login failed:', result.error);
+      }
+    } catch (err) {
+      console.error("Entra login error:", err);
+    } finally {
+      setEntraLoading(false);
+    }
+  };
+
+  const handleEmailLogin = async (e) => {
     e.preventDefault();
     if (!email) return;
 
     setLoading(true);
     try {
       localStorage.setItem('GSG_USER_EMAIL', email);
+      localStorage.setItem('GSG_AUTH_METHOD', 'email');
       window.location.reload();
     } catch (err) {
       console.error("Login Error:", err);
@@ -44,8 +66,27 @@ const LoginScreen = ({ onLogin, error }) => {
             <p className="text-slate-600 font-semibold text-sm">Manage your time with ease</p>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
+          {/* Microsoft Sign-In Button */}
+          <button
+            onClick={handleEntraLogin}
+            disabled={entraLoading}
+            className="w-full bg-white hover:bg-gray-50 text-slate-900 font-bold py-3 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6v-11.4H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" fill="#0078D4"/>
+            </svg>
+            {entraLoading ? 'Connecting...' : 'Sign in with Microsoft'}
+          </button>
+
+          {/* Divider */}
+          <div className="my-6 flex items-center gap-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-slate-300"></div>
+            <span className="text-xs text-slate-500 font-medium">OR</span>
+            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-slate-300"></div>
+          </div>
+
+          {/* Email Login Form */}
+          <form onSubmit={handleEmailLogin} className="space-y-4">
             <div className="relative">
               <input
                 type="email"
@@ -63,20 +104,13 @@ const LoginScreen = ({ onLogin, error }) => {
               className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <LogIn size={20} />
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? 'Signing in...' : 'Sign In with Email'}
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="my-6 flex items-center gap-3">
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-slate-300"></div>
-            <span className="text-xs text-slate-500 font-medium">OR</span>
-            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-slate-300"></div>
-          </div>
-
           {/* Demo Info */}
-          <div className="backdrop-blur-md bg-blue-500/10 border border-blue-200/50 rounded-xl p-4 text-center">
-            <p className="text-xs text-slate-600 mb-2">Try demo with:</p>
+          <div className="mt-4 backdrop-blur-md bg-blue-500/10 border border-blue-200/50 rounded-xl p-4 text-center">
+            <p className="text-xs text-slate-600 mb-2">Demo email:</p>
             <code className="text-xs font-mono text-blue-600 bg-white/50 px-2 py-1 rounded">hitesh.bhojani@gardenerschools.com</code>
           </div>
 

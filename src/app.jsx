@@ -5,6 +5,7 @@ import {
   query, where, getDocs, writeBatch, setDoc
 } from 'firebase/firestore';
 import { Megaphone, Maximize2, Minimize2 } from 'lucide-react';
+import { logoutEntra } from './services/entraAuth';
 
 import CONFIG from './config.js';
 import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail } from './utils/helpers.js';
@@ -79,7 +80,22 @@ const App = () => {
 
   const handleLogout = useCallback(async () => {
     setShowInactivityWarning(false);
+    const authMethod = localStorage.getItem('GSG_AUTH_METHOD');
+
+    // Clear auth localStorage
     localStorage.removeItem('GSG_USER_EMAIL');
+    localStorage.removeItem('GSG_USER_NAME');
+    localStorage.removeItem('GSG_AUTH_METHOD');
+
+    // Logout from Entra if logged in via Entra
+    if (authMethod === 'entra') {
+      try {
+        await logoutEntra();
+      } catch (err) {
+        console.error('Entra logout error:', err);
+      }
+    }
+
     setGraphToken(null);
     setUser(null);
     window.location.reload();

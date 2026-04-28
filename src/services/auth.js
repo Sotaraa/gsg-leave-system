@@ -5,12 +5,15 @@ import { mock_staff } from '../data/mockdata';
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authMethod, setAuthMethod] = useState(null);
 
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Get email from localStorage or use default
+        // Get email and auth method from localStorage
         const storedEmail = localStorage.getItem('GSG_USER_EMAIL');
+        const method = localStorage.getItem('GSG_AUTH_METHOD') || 'email';
+        const storedName = localStorage.getItem('GSG_USER_NAME');
 
         if (storedEmail) {
           // Fetch user from Supabase using email
@@ -33,18 +36,20 @@ export const useAuth = () => {
               allowance: 25
             });
           } else {
-            // Fallback to mock data if not found
-            const mockUser = mock_staff[0];
+            // Fallback - user not in Supabase but has email
+            // Use Entra name if available, otherwise email prefix
+            const displayName = storedName || storedEmail.split('@')[0];
             setUser({
-              uid: mockUser.id,
-              displayName: mockUser.name,
-              email: mockUser.email,
-              role: mockUser.role,
-              department: mockUser.department,
-              allowance: mockUser.allowance
+              uid: storedEmail,
+              displayName: displayName,
+              email: storedEmail,
+              department: 'Unknown',
+              role: 'Staff',
+              allowance: 25,
+              isGuest: true // Mark as guest/fallback user
             });
-            localStorage.setItem('GSG_USER_EMAIL', mockUser.email);
           }
+          setAuthMethod(method);
         } else {
           // No email in localStorage - user must sign in via LoginScreen
           setUser(null);
@@ -61,5 +66,5 @@ export const useAuth = () => {
     initAuth();
   }, []);
 
-  return { user, loading };
+  return { user, loading, authMethod };
 };
