@@ -9,6 +9,7 @@ import { Megaphone, Maximize2, Minimize2 } from 'lucide-react';
 
 import CONFIG from './config.js';
 import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail } from './utils/helpers.js';
+import { useAuth } from './services/auth.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import Sidebar from './components/Sidebar.jsx';
@@ -25,6 +26,7 @@ const INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
 const WARNING_BEFORE_MS = 60 * 1000;
 
 const App = () => {
+  const { user: authUser, loading: authLoading } = useAuth();
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState('employee');
@@ -76,9 +78,10 @@ const App = () => {
 
   const handleLogout = useCallback(async () => {
     setShowInactivityWarning(false);
-    await signOut(getAuth());
+    localStorage.removeItem('GSG_USER_EMAIL');
     setGraphToken(null);
     setUser(null);
+    window.location.reload();
   }, []);
 
   const resetInactivityTimer = useCallback(() => {
@@ -109,12 +112,11 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    const authInstance = getAuth();
-    return onAuthStateChanged(authInstance, (u) => {
-      setUser(u);
-      if (!u) setIsLoading(false);
-    });
-  }, []);
+    setUser(authUser);
+    if (!authLoading) {
+      setIsLoading(false);
+    }
+  }, [authUser, authLoading]);
 
   useEffect(() => {
     if (!user) return;
