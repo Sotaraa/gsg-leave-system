@@ -64,6 +64,7 @@ const LoginScreen = ({ onLogin, error }) => {
           <div className="text-center mb-8">
             <h1 className="text-3xl font-black text-slate-900 mb-2">Sotara LeaveHub</h1>
             <p className="text-slate-600 font-semibold text-sm">Manage your time with ease</p>
+            <p className="text-xs text-slate-500 mt-2">Multi-tenant enterprise platform</p>
           </div>
 
           {/* Microsoft Sign-In Button */}

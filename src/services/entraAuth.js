@@ -1,12 +1,30 @@
 import { PublicClientApplication } from '@azure/msal-browser';
 
+/**
+ * MULTI-TENANT AZURE AD CONFIGURATION
+ *
+ * This app is configured as a multi-tenant application, allowing users from any
+ * Azure AD organization to sign in with their corporate credentials.
+ *
+ * Configuration Details:
+ * - Client ID: 2beb6b60-ecff-4467-bd64-92757a67b369 (Sotara account)
+ * - Authority: https://login.microsoftonline.com/common (multi-tenant)
+ * - Tenant ID: deef90b7-a94c-4dd3-92a1-5d8055068d6b (Sotara's home tenant)
+ *
+ * Users can sign in from:
+ * ✓ Sotara's Azure AD (deef90b7-a94c-4dd3-92a1-5d8055068d6b)
+ * ✓ Any other organization's Azure AD (multi-tenant)
+ * ✓ Microsoft personal accounts (if configured)
+ */
+
 const msalConfig = {
   auth: {
-    clientId: 'df2ff508-580d-43b7-93ee-60d5863ce57c',
-    authority: 'https://login.microsoftonline.com/9196dde2-b3f2-470e-bc68-ef2144cb2343',
+    clientId: '2beb6b60-ecff-4467-bd64-92757a67b369', // Multi-tenant app ID
+    authority: 'https://login.microsoftonline.com/common', // Multi-tenant authority
     redirectUri: typeof window !== 'undefined'
       ? window.location.origin
       : 'http://localhost:5173',
+    knownAuthorities: ['login.microsoftonline.com'], // Trusted authorities
   },
   cache: {
     cacheLocation: 'localStorage',
