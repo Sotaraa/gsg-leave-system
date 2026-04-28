@@ -22,8 +22,8 @@ const msalConfig = {
     clientId: '2beb6b60-ecff-4467-bd64-92757a67b369', // Multi-tenant app ID
     authority: 'https://login.microsoftonline.com/common', // Multi-tenant authority
     redirectUri: typeof window !== 'undefined'
-      ? window.location.origin
-      : 'http://localhost:5173',
+      ? window.location.origin + '/'
+      : 'http://localhost:5173/',
     knownAuthorities: ['login.microsoftonline.com'], // Trusted authorities
     navigateToLoginRequestUrl: false,
   },
