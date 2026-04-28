@@ -990,7 +990,7 @@ const App = () => {
 
         {!showOnboarding && (
           <>
-        <Sidebar view={view} setView={setView} myRole={myRole} onShowOnboarding={() => {
+        <Sidebar view={view} setView={setView} myRole={myRole} userEmail={user?.email} onShowOnboarding={() => {
           if (user?.email?.toLowerCase() === 'info@sotara.co.uk') {
             setShowOnboarding(true);
           } else {
