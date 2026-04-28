@@ -1026,7 +1026,8 @@ const App = () => {
                 selectedDate={selectedDate} setSelectedDate={setSelectedDate}
                 requests={requests} staffList={staffList} termDates={termDates}
                 schoolTerms={schoolTerms} bankHolidays={bankHolidays}
-                isAdmin={isAdmin} user={user} deleteRequest={deleteRequest} />
+                isAdmin={isAdmin} user={user} deleteRequest={deleteRequest}
+                myRole={myRole} myDept={myDept} />
             </div>
           )}
           {view === 'analytics' && canManage && analyticsData && (

@@ -6,8 +6,30 @@ import { formatDateUK, getTermForDate } from '../../utils/helpers.js';
 const CalendarView = ({
   calDate, setCalDate, calViewMode, setCalViewMode,
   selectedDate, setSelectedDate, requests, staffList,
-  termDates, schoolTerms, bankHolidays, isAdmin, user, deleteRequest
+  termDates, schoolTerms, bankHolidays, isAdmin, user, deleteRequest, myRole, myDept
 }) => {
+  // Determine if user can see a specific leave request based on their role
+  const canSeeRequest = (request) => {
+    // Types of leave that should be hidden from regular staff
+    const restrictedLeaveTypes = ['Sick Leave', 'Compassionate', 'Medical Appt'];
+
+    // Admins can see everything
+    if (isAdmin) return true;
+
+    // For restricted leave types:
+    if (restrictedLeaveTypes.includes(request.type)) {
+      // Dept Heads can see restricted leaves only for their own department
+      if (myRole === 'Dept Head') {
+        return request.department === myDept;
+      }
+      // Regular staff cannot see restricted leaves
+      return false;
+    }
+
+    // Non-restricted leaves are visible to everyone
+    return true;
+  };
+
   const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year, month) => { 
     let day = new Date(year, month, 1).getDay(); 
@@ -96,7 +118,9 @@ const CalendarView = ({
                 
                 const dayRequests = requests.filter(r => {
                   const staff = staffList.find(s => s.email === r.employeeEmail);
-                  return !staff?.isArchived && r.status === 'Approved' && r.startDate <= dateStr && (r.endDate || r.startDate) >= dateStr;
+                  const isApproved = !staff?.isArchived && r.status === 'Approved' && r.startDate <= dateStr && (r.endDate || r.startDate) >= dateStr;
+                  // Apply role-based filtering
+                  return isApproved && canSeeRequest(r);
                 });
 
                 const bankHols = bankHolidays.filter(h => h.date === dateStr);
