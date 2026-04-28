@@ -13,9 +13,7 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
     adminLastName: '',
     adminEmail: '',
     defaultAllowance: 25,
-    hoursPerDay: 8,
-    carryForwardEnabled: false,
-    maxCarryForwardDays: 0
+    hoursPerDay: 8
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -76,9 +74,7 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
           superAdmin: formData.adminEmail,
           isActive: true,
           defaultAllowance: formData.defaultAllowance,
-          hoursPerDay: formData.hoursPerDay,
-          carryForwardEnabled: formData.carryForwardEnabled,
-          maxCarryForwardDays: formData.maxCarryForwardDays
+          hoursPerDay: formData.hoursPerDay
         })
         .select();
 
@@ -104,9 +100,7 @@ Domain: ${domain}`
         adminLastName: '',
         adminEmail: '',
         defaultAllowance: 25,
-        hoursPerDay: 8,
-        carryForwardEnabled: false,
-        maxCarryForwardDays: 0
+        hoursPerDay: 8
       });
 
       // Call callback if provided
@@ -323,34 +317,6 @@ Domain: ${domain}`
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    name="carryForwardEnabled"
-                    checked={formData.carryForwardEnabled}
-                    onChange={handleFormChange}
-                    className="w-4 h-4 rounded"
-                  />
-                  <label className="text-sm font-semibold text-slate-700">
-                    Enable Carry Forward
-                  </label>
-                </div>
-
-                {formData.carryForwardEnabled && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Max Carry Forward Days
-                    </label>
-                    <input
-                      type="number"
-                      name="maxCarryForwardDays"
-                      value={formData.maxCarryForwardDays}
-                      onChange={handleFormChange}
-                      min="0"
-                      className="w-full px-4 py-3 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Buttons */}
