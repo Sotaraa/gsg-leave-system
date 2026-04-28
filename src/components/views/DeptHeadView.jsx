@@ -163,7 +163,11 @@ const DeptHeadView = ({
                     <p className="text-xs text-gray-500">
                       {r.type}, {isNaN(Number(r.daysCount)) ? '?' : r.daysCount}d{r.hoursWorked ? ` (${r.hoursWorked}h)` : ''}, {formatDateUK(r.startDate)}
                     </p>
-                    {r.sickReason && <p className="text-xs text-rose-500 mt-0.5">Reason: {r.sickReason}</p>}
+                    {r.sickReason && (r.type === 'Sick Leave' || r.type === 'Medical Appt') && (
+                      <p className={`text-xs mt-0.5 ${r.type === 'Medical Appt' ? 'text-blue-600' : 'text-rose-500'}`}>
+                        Reason: {r.sickReason}
+                      </p>
+                    )}
                     {isTOI && (
                       <div className="mt-1.5 bg-orange-50 border border-orange-200 rounded px-2 py-1.5">
                         <p className="text-xs text-orange-700">
@@ -278,10 +282,12 @@ const DeptHeadView = ({
                 </div>
               );
             })()}
-            {manualLeave.type === 'Sick Leave' && (
+            {(manualLeave.type === 'Sick Leave' || manualLeave.type === 'Medical Appt') && (
               <div className="mb-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">Sickness Reason (optional)</label>
-                <input type="text" placeholder="e.g. Flu, back pain, migraine..."
+                <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">
+                  {manualLeave.type === 'Medical Appt' ? 'Appointment Reason (optional)' : 'Sickness Reason (optional)'}
+                </label>
+                <input type="text" placeholder={manualLeave.type === 'Medical Appt' ? 'e.g. Dentist, eye test, doctor...' : 'e.g. Flu, back pain, migraine...'}
                   maxLength={200}
                   value={manualLeave.sickReason || ''}
                   onChange={e => setManualLeave({ ...manualLeave, sickReason: e.target.value })}

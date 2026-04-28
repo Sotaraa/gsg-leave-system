@@ -618,10 +618,12 @@ const EmployeeView = ({
               );
             })()}
             <TypeNote type={formData.type} currentHolidayYear={currentHolidayYear} startDate={formData.startDate}/>
-            {formData.type === 'Sick Leave' && (
+            {(formData.type === 'Sick Leave' || formData.type === 'Medical Appt') && (
               <div className="mb-3">
-                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Sickness Reason (optional)</label>
-                <input type="text" placeholder="Brief reason e.g. Flu, back pain..."
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+                  {formData.type === 'Medical Appt' ? 'Appointment Reason (optional)' : 'Sickness Reason (optional)'}
+                </label>
+                <input type="text" placeholder={formData.type === 'Medical Appt' ? 'Brief reason e.g. Dentist, eye test...' : 'Brief reason e.g. Flu, back pain...'}
                   maxLength={200}
                   value={formData.sickReason || ''}
                   onChange={e => setFormData({ ...formData, sickReason: e.target.value })}
@@ -710,8 +712,10 @@ const EmployeeView = ({
                     {!counts && !isTTLeave && !isNextYear && <span className="text-xs text-gray-400 italic">recorded only</span>}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{formatDateUK(r.startDate)}, {isNaN(Number(r.daysCount)) ? '?' : r.daysCount}d{r.hoursWorked ? ` (${r.hoursWorked}h)` : ''}</p>
-                  {r.sickReason && r.type === 'Sick Leave' && (
-                    <p className="text-xs text-rose-500 mt-0.5">Reason: {r.sickReason}</p>
+                  {r.sickReason && (r.type === 'Sick Leave' || r.type === 'Medical Appt') && (
+                    <p className={`text-xs mt-0.5 ${r.type === 'Medical Appt' ? 'text-blue-600' : 'text-rose-500'}`}>
+                      Reason: {r.sickReason}
+                    </p>
                   )}
                 </div>
                 <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${statusStyle[r.status] ?? 'bg-gray-100 text-gray-500'}`}>
