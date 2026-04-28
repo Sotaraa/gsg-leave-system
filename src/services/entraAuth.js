@@ -46,35 +46,48 @@ const scopes = {
 };
 
 let msalInstance = null;
-let initPromise = null;
 
-export const getMsalInstance = async () => {
+// Create and initialize MSAL instance synchronously
+export const getMsalInstance = () => {
   if (!msalInstance) {
     console.log('🔄 Creating MSAL instance...');
-    msalInstance = new PublicClientApplication(msalConfig);
-
-    if (!initPromise) {
-      console.log('🔄 Initializing MSAL...');
-      initPromise = msalInstance.initialize().then(() => {
-        console.log('✅ MSAL initialized successfully');
-        return msalInstance;
-      }).catch(err => {
-        console.error('❌ MSAL initialization failed:', err);
-        throw err;
-      });
+    try {
+      msalInstance = new PublicClientApplication(msalConfig);
+      console.log('✅ MSAL instance created successfully');
+    } catch (err) {
+      console.error('❌ Failed to create MSAL instance:', err);
     }
-
-    await initPromise;
   }
   return msalInstance;
+};
+
+// Initialize MSAL when the DOM is ready
+export const initializeMsal = async () => {
+  if (!msalInstance) {
+    getMsalInstance();
+  }
+
+  if (msalInstance) {
+    try {
+      console.log('🔄 Running MSAL initialization...');
+      await msalInstance.initialize();
+      console.log('✅ MSAL initialized successfully');
+    } catch (err) {
+      console.error('❌ MSAL initialization failed:', err);
+    }
+  }
 };
 
 export const loginWithEntra = async () => {
   try {
     console.log('🔵 Starting Entra login flow...');
-    const instance = await getMsalInstance();
-    console.log('📱 Triggering login popup...');
+    const instance = getMsalInstance();
 
+    if (!instance) {
+      throw new Error('MSAL instance not available');
+    }
+
+    console.log('📱 Triggering login popup...');
     const response = await instance.loginPopup(scopes.loginRequest);
 
     console.log('✅ Login successful, user:', response.account.username);
@@ -97,7 +110,9 @@ export const loginWithEntra = async () => {
 
 export const logoutEntra = async () => {
   try {
-    const instance = await getMsalInstance();
+    const instance = getMsalInstance();
+    if (!instance) return;
+
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
       await instance.logoutPopup({
@@ -109,9 +124,11 @@ export const logoutEntra = async () => {
   }
 };
 
-export const getEntraUser = async () => {
+export const getEntraUser = () => {
   try {
-    const instance = await getMsalInstance();
+    const instance = getMsalInstance();
+    if (!instance) return null;
+
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
       return {
