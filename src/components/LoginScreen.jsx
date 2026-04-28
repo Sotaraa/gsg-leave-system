@@ -6,21 +6,30 @@ const LoginScreen = ({ onLogin, error }) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [entraLoading, setEntraLoading] = useState(false);
+  const [entraError, setEntraError] = useState('');
 
   const handleEntraLogin = async () => {
+    console.log('🔵 Microsoft login button clicked');
     setEntraLoading(true);
+    setEntraError('');
     try {
+      console.log('📍 Calling loginWithEntra()...');
       const result = await loginWithEntra();
+      console.log('📍 loginWithEntra result:', result);
+
       if (result.success) {
+        console.log('✅ Entra login successful, email:', result.user.email);
         localStorage.setItem('GSG_USER_EMAIL', result.user.email);
         localStorage.setItem('GSG_USER_NAME', result.user.name || '');
         localStorage.setItem('GSG_AUTH_METHOD', 'entra');
         window.location.reload();
       } else {
-        console.error('Entra login failed:', result.error);
+        console.error('❌ Entra login failed:', result.error);
+        setEntraError(`Login failed: ${result.error}`);
       }
     } catch (err) {
-      console.error("Entra login error:", err);
+      console.error("❌ Entra login error:", err);
+      setEntraError(`Error: ${err.message}`);
     } finally {
       setEntraLoading(false);
     }
@@ -110,10 +119,15 @@ const LoginScreen = ({ onLogin, error }) => {
             </button>
           </form>
 
-          {/* Error Message */}
+          {/* Error Messages */}
           {error && (
             <div className="mt-6 p-3 bg-red-50/80 border border-red-200/50 text-red-700 text-sm rounded-lg">
               {error}
+            </div>
+          )}
+          {entraError && (
+            <div className="mt-4 p-3 bg-red-50/80 border border-red-200/50 text-red-700 text-sm rounded-lg">
+              <strong>Microsoft Login Error:</strong> {entraError}
             </div>
           )}
 
