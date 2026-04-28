@@ -1,22 +1,119 @@
-import React from 'react';
-import { GraduationCap, LogIn } from 'lucide-react';
-import CONFIG from '../config.js';
+import React, { useState } from 'react';
+import { LogIn, Sparkles } from 'lucide-react';
 
-const LoginScreen = ({ onLogin, error }) => (
-  <div className="h-screen flex items-center justify-center bg-gray-100">
-    <div className="bg-white p-10 rounded-2xl shadow-xl w-full max-w-md text-center border-t-8 border-emerald-800">
-      <div className="mb-6 flex justify-center text-emerald-800">
-        <GraduationCap size={64} />
+const LoginScreen = ({ onLogin, error }) => {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!email) return;
+
+    setLoading(true);
+    try {
+      localStorage.setItem('GSG_USER_EMAIL', email);
+      window.location.reload();
+    } catch (err) {
+      console.error("Login Error:", err);
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated background blobs */}
+      <div className="absolute top-20 left-10 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+      <div className="absolute top-40 right-10 w-72 h-72 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+
+      <div className="relative z-10 max-w-md w-full">
+        {/* Glassmorphism Card */}
+        <div className="backdrop-blur-xl bg-white/30 rounded-3xl p-8 shadow-2xl border border-white/40">
+          {/* Logo */}
+          <div className="flex justify-center mb-8">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-blue-600 rounded-2xl blur opacity-75"></div>
+              <div className="relative bg-gradient-to-br from-blue-500 to-blue-700 w-16 h-16 rounded-2xl flex items-center justify-center">
+                <Sparkles className="text-white" size={32} />
+              </div>
+            </div>
+          </div>
+
+          {/* Header */}
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-black text-slate-900 mb-2">Sotara LeaveHub</h1>
+            <p className="text-slate-600 font-semibold text-sm">Manage your time with ease</p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="relative">
+              <input
+                type="email"
+                placeholder="your.email@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder-slate-500 transition-all"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !email}
+              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <LogIn size={20} />
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="my-6 flex items-center gap-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-slate-300"></div>
+            <span className="text-xs text-slate-500 font-medium">OR</span>
+            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-slate-300"></div>
+          </div>
+
+          {/* Demo Info */}
+          <div className="backdrop-blur-md bg-blue-500/10 border border-blue-200/50 rounded-xl p-4 text-center">
+            <p className="text-xs text-slate-600 mb-2">Try demo with:</p>
+            <code className="text-xs font-mono text-blue-600 bg-white/50 px-2 py-1 rounded">angela.clarke@gardenerschools.com</code>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mt-6 p-3 bg-red-50/80 border border-red-200/50 text-red-700 text-sm rounded-lg">
+              {error}
+            </div>
+          )}
+
+          {/* Footer */}
+          <p className="mt-6 text-center text-[10px] text-slate-500 leading-relaxed">
+            By signing in, you agree to our terms and data protection policy
+          </p>
+        </div>
+
+        {/* Bottom text */}
+        <p className="text-center text-slate-600 text-sm font-medium mt-6">
+          Powered by <span className="text-blue-600 font-bold">Sotara</span>
+        </p>
       </div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-1">{CONFIG.schoolName}</h1>
-      <p className="text-gray-500 uppercase text-xs font-bold mb-8">HR Management Portal</p>
-      <button onClick={onLogin} className="w-full bg-emerald-800 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
-        <LogIn size={18} /> Sign in with Office 365
-      </button>
-      {error && <div className="mt-6 p-3 bg-red-50 text-red-700 text-sm rounded border border-red-200">{error}</div>}
-      <div className="mt-8 pt-6 border-t border-gray-100 text-xs text-gray-400">Secure Corporate Access • v49.0</div>
+
+      <style jsx>{`
+        @keyframes blob {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+      `}</style>
     </div>
-  </div>
-);
+  );
+};
 
 export default LoginScreen;

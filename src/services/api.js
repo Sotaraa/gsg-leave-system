@@ -1,30 +1,45 @@
 // src/services/api.js
-import { mock_requests, config } from '../data/mockdata';
-
-// This Array is your "Database" for Phase 1
-let localRequests = [...mock_requests];
-
-// Helper to fake slow internet (makes it feel real)
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+import { supabase } from '../supabase';
+import { config } from '../data/mockdata';
 
 export const api = {
   // GET: Fetch requests for the logged-in user
   getMyRequests: async (email) => {
-    await delay(400); 
-    return localRequests.filter(req => req.employeeEmail === email);
+    try {
+      const { data, error } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('employeeEmail', email)
+        .order('submittedAt', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+      return [];
+    }
   },
 
   // POST: Submit a new request
   submitRequest: async (formData) => {
-    await delay(800);
-    const newReq = {
-      ...formData,
-      id: `req_${Date.now()}`,
-      status: 'Pending',
-      submittedAt: new Date().toISOString()
-    };
-    localRequests = [newReq, ...localRequests];
-    return newReq;
+    try {
+      const newReq = {
+        ...formData,
+        status: 'Pending',
+        submittedAt: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('requests')
+        .insert([newReq])
+        .select();
+
+      if (error) throw error;
+      return data?.[0] || newReq;
+    } catch (error) {
+      console.error('Error submitting request:', error);
+      throw error;
+    }
   },
 
   // Helper: Get Dropdown options

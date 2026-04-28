@@ -1,38 +1,111 @@
-import React from 'react';
-import { GraduationCap, LogIn } from 'lucide-react';
-import { auth } from '../../services/firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import React, { useState } from 'react';
+import { LogIn, Sparkles } from 'lucide-react';
 
 const Login = () => {
-    const handleLogin = async () => {
-        const provider = new GoogleAuthProvider();
+    const [email, setEmail] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        if (!email) return;
+
+        setLoading(true);
         try {
-            await signInWithPopup(auth, provider);
+            localStorage.setItem('GSG_USER_EMAIL', email);
+            window.location.reload();
         } catch (error) {
-            console.error("GSG Auth Error:", error);
+            console.error("Login Error:", error);
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-emerald-900 flex items-center justify-center p-4">
-            <div className="bg-white max-w-md w-full rounded-[3rem] p-10 shadow-2xl text-center">
-                <div className="bg-emerald-100 w-20 h-20 rounded-3xl flex items-center justify-center text-emerald-800 mx-auto mb-6">
-                    <GraduationCap size={40} />
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4 relative overflow-hidden">
+            {/* Animated background blobs */}
+            <div className="absolute top-20 left-10 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+            <div className="absolute top-40 right-10 w-72 h-72 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+
+            <div className="relative z-10 max-w-md w-full">
+                {/* Glassmorphism Card */}
+                <div className="backdrop-blur-xl bg-white/30 rounded-3xl p-8 shadow-2xl border border-white/40">
+                    {/* Logo */}
+                    <div className="flex justify-center mb-8">
+                        <div className="relative">
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-blue-600 rounded-2xl blur opacity-75"></div>
+                            <div className="relative bg-gradient-to-br from-blue-500 to-blue-700 w-16 h-16 rounded-2xl flex items-center justify-center">
+                                <Sparkles className="text-white" size={32} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Header */}
+                    <div className="text-center mb-8">
+                        <h1 className="text-3xl font-black text-slate-900 mb-2">Sotara LeaveHub</h1>
+                        <p className="text-slate-600 font-semibold text-sm">Manage your time with ease</p>
+                    </div>
+
+                    {/* Form */}
+                    <form onSubmit={handleLogin} className="space-y-4">
+                        <div className="relative">
+                            <input
+                                type="email"
+                                placeholder="your.email@company.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full px-4 py-3 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder-slate-500 transition-all"
+                                required
+                            />
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={loading || !email}
+                            className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <LogIn size={20} />
+                            {loading ? 'Signing in...' : 'Sign In'}
+                        </button>
+                    </form>
+
+                    {/* Divider */}
+                    <div className="my-6 flex items-center gap-3">
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent to-slate-300"></div>
+                        <span className="text-xs text-slate-500 font-medium">OR</span>
+                        <div className="flex-1 h-px bg-gradient-to-l from-transparent to-slate-300"></div>
+                    </div>
+
+                    {/* Demo Info */}
+                    <div className="backdrop-blur-md bg-blue-500/10 border border-blue-200/50 rounded-xl p-4 text-center">
+                        <p className="text-xs text-slate-600 mb-2">Try demo with:</p>
+                        <code className="text-xs font-mono text-blue-600 bg-white/50 px-2 py-1 rounded">angela.clarke@gardenerschools.com</code>
+                    </div>
+
+                    {/* Footer */}
+                    <p className="mt-6 text-center text-[10px] text-slate-500 leading-relaxed">
+                        By signing in, you agree to our terms and data protection policy
+                    </p>
                 </div>
-                <h1 className="text-2xl font-black text-slate-800 mb-2">GSG Leave System</h1>
-                <p className="text-slate-500 font-bold text-sm mb-10 uppercase tracking-widest">Internal Access Only</p>
-                
-                <button 
-                    onClick={handleLogin}
-                    className="w-full bg-slate-900 text-white flex items-center justify-center gap-3 py-4 rounded-2xl font-black hover:bg-black transition-all shadow-xl shadow-emerald-100"
-                >
-                    <LogIn size={20} /> Sign in with School Email
-                </button>
-                
-                <p className="mt-8 text-[10px] text-slate-400 font-bold leading-relaxed">
-                    By signing in, you agree to the Gardener Schools Group Acceptable Use Policy and Data Protection standards.
+
+                {/* Bottom text */}
+                <p className="text-center text-slate-600 text-sm font-medium mt-6">
+                    Powered by <span className="text-blue-600 font-bold">Sotara</span>
                 </p>
             </div>
+
+            <style jsx>{`
+                @keyframes blob {
+                    0%, 100% { transform: translate(0, 0) scale(1); }
+                    33% { transform: translate(30px, -50px) scale(1.1); }
+                    66% { transform: translate(-20px, 20px) scale(0.9); }
+                }
+                .animate-blob {
+                    animation: blob 7s infinite;
+                }
+                .animation-delay-2000 {
+                    animation-delay: 2s;
+                }
+            `}</style>
         </div>
     );
 };
