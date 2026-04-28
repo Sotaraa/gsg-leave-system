@@ -69,9 +69,10 @@ const LoginScreen = ({ onLogin, error }) => {
 
           {/* Microsoft Sign-In Button */}
           <button
+            type="button"
             onClick={handleEntraLogin}
             disabled={entraLoading}
-            className="w-full bg-white hover:bg-gray-50 text-slate-900 font-bold py-3 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200"
+            className="w-full bg-white hover:bg-gray-50 text-slate-900 font-bold py-3 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-md hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 cursor-pointer z-20 relative"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6v-11.4H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" fill="#0078D4"/>
@@ -108,12 +109,6 @@ const LoginScreen = ({ onLogin, error }) => {
               {loading ? 'Signing in...' : 'Sign In with Email'}
             </button>
           </form>
-
-          {/* Demo Info */}
-          <div className="mt-4 backdrop-blur-md bg-blue-500/10 border border-blue-200/50 rounded-xl p-4 text-center">
-            <p className="text-xs text-slate-600 mb-2">Demo email:</p>
-            <code className="text-xs font-mono text-blue-600 bg-white/50 px-2 py-1 rounded">hitesh.bhojani@gardenerschools.com</code>
-          </div>
 
           {/* Error Message */}
           {error && (
