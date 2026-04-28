@@ -16,8 +16,8 @@ export const useAuth = () => {
           // Fetch user from Supabase using email
           const { data: requests, error } = await supabase
             .from('requests')
-            .select('employeeName, employeeEmail, department')
-            .eq('employeeEmail', storedEmail)
+            .select('employeename, employeeemail, department')
+            .eq('employeeemail', storedEmail)
             .limit(1);
 
           if (error) throw error;
@@ -25,9 +25,9 @@ export const useAuth = () => {
           if (requests && requests.length > 0) {
             const userData = requests[0];
             setUser({
-              uid: userData.employeeEmail,
-              displayName: userData.employeeName,
-              email: userData.employeeEmail,
+              uid: userData.employeeemail,
+              displayName: userData.employeename,
+              email: userData.employeeemail,
               department: userData.department,
               role: 'Staff',
               allowance: 25
