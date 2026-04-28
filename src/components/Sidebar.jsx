@@ -1,17 +1,21 @@
 import React from 'react';
 import { User, CheckSquare, Calendar, BarChart2, Settings, LogOut, Sparkles } from 'lucide-react';
-import { getAuth, signOut } from 'firebase/auth';
 
 const Sidebar = ({ view, setView, myRole }) => {
   const isAdmin = myRole === 'Admin';
   const canManage = myRole === 'Dept Head' || isAdmin;
+
+  const handleLogout = () => {
+    localStorage.removeItem('GSG_USER_EMAIL');
+    window.location.href = '/';
+  };
 
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <div>
           <h2 className="font-bold flex items-center gap-2"><Sparkles size={20} /> Sotara LeaveHub</h2>
-          <p className="text-xs text-emerald-200 mt-1">{myRole}</p>
+          <p className="text-xs text-blue-200 mt-1">{myRole}</p>
         </div>
       </div>
       <div className="sidebar-menu">
@@ -38,7 +42,7 @@ const Sidebar = ({ view, setView, myRole }) => {
         )}
       </div>
       <div className="sidebar-footer">
-        <div className="nav-item text-red-300" onClick={() => signOut(getAuth())}>
+        <div className="nav-item text-red-300" onClick={handleLogout} style={{ cursor: 'pointer' }}>
           <LogOut size={18} /> Sign Out
         </div>
       </div>
