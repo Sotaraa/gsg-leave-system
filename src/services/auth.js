@@ -46,30 +46,13 @@ export const useAuth = () => {
             localStorage.setItem('GSG_USER_EMAIL', mockUser.email);
           }
         } else {
-          // Default to first mock user
-          const mockUser = mock_staff[0];
-          setUser({
-            uid: mockUser.id,
-            displayName: mockUser.name,
-            email: mockUser.email,
-            role: mockUser.role,
-            department: mockUser.department,
-            allowance: mockUser.allowance
-          });
-          localStorage.setItem('GSG_USER_EMAIL', mockUser.email);
+          // No email in localStorage - user must sign in via LoginScreen
+          setUser(null);
         }
       } catch (error) {
         console.error('Auth error:', error);
-        // Fallback to mock user on error
-        const mockUser = mock_staff[0];
-        setUser({
-          uid: mockUser.id,
-          displayName: mockUser.name,
-          email: mockUser.email,
-          role: mockUser.role,
-          department: mockUser.department,
-          allowance: mockUser.allowance
-        });
+        // On error, show login screen
+        setUser(null);
       } finally {
         setLoading(false);
       }
