@@ -77,7 +77,7 @@ const LoginScreen = ({ onLogin, error }) => {
           {/* Demo Info */}
           <div className="backdrop-blur-md bg-blue-500/10 border border-blue-200/50 rounded-xl p-4 text-center">
             <p className="text-xs text-slate-600 mb-2">Try demo with:</p>
-            <code className="text-xs font-mono text-blue-600 bg-white/50 px-2 py-1 rounded">angela.clarke@gardenerschools.com</code>
+            <code className="text-xs font-mono text-blue-600 bg-white/50 px-2 py-1 rounded">hitesh.bhojani@gardenerschools.com</code>
           </div>
 
           {/* Error Message */}
