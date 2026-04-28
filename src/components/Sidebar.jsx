@@ -1,7 +1,7 @@
 import React from 'react';
-import { User, CheckSquare, Calendar, BarChart2, Settings, LogOut, Sparkles } from 'lucide-react';
+import { User, CheckSquare, Calendar, BarChart2, Settings, LogOut, Sparkles, Lock } from 'lucide-react';
 
-const Sidebar = ({ view, setView, myRole }) => {
+const Sidebar = ({ view, setView, myRole, onShowOnboarding }) => {
   const isAdmin = myRole === 'Admin';
   const canManage = myRole === 'Dept Head' || isAdmin;
 
@@ -36,9 +36,14 @@ const Sidebar = ({ view, setView, myRole }) => {
           </div>
         )}
         {isAdmin && (
-          <div className={`nav-item ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
-            <Settings size={18} /> Admin
-          </div>
+          <>
+            <div className={`nav-item ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
+              <Settings size={18} /> Admin
+            </div>
+            <div className="nav-item text-yellow-300 hover:text-yellow-200" onClick={onShowOnboarding} style={{ cursor: 'pointer' }}>
+              <Lock size={18} /> Organizations
+            </div>
+          </>
         )}
       </div>
       <div className="sidebar-footer">

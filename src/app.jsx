@@ -21,6 +21,7 @@ import DeptHeadView from './components/views/DeptHeadView.jsx';
 import AdminView from './components/views/AdminView.jsx';
 import CalendarView from './components/views/CalendarView.jsx';
 import AnalyticsView from './components/views/AnalyticsView.jsx';
+import OnboardingAdmin from './components/OnboardingAdmin.jsx';
 
 const subCol = (name) => collection(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', name);
 
@@ -32,6 +33,7 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState('employee');
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [myRole, setMyRole] = useState('Staff');
   const [myDept, setMyDept] = useState('');
   const [myAllowance, setMyAllowance] = useState(CONFIG.defaultAllowance);
@@ -960,7 +962,41 @@ const App = () => {
           </div>
         )}
 
-        <Sidebar view={view} setView={setView} myRole={myRole} />
+        {/* Onboarding Admin Page - Master admin only */}
+        {showOnboarding && (
+          <>
+            <button
+              onClick={() => setShowOnboarding(false)}
+              style={{
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                zIndex: 10000,
+                background: 'white',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '14px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+              }}
+            >
+              ✕ Close
+            </button>
+            <OnboardingAdmin user={user} onSuccess={() => setShowOnboarding(false)} />
+          </>
+        )}
+
+        {!showOnboarding && (
+          <>
+        <Sidebar view={view} setView={setView} myRole={myRole} onShowOnboarding={() => {
+          if (user?.email?.toLowerCase() === 'info@sotara.co.uk') {
+            setShowOnboarding(true);
+          } else {
+            alert('Only info@sotara.co.uk can create organizations');
+          }
+        }} />
         <div className="main-content" style={{ paddingTop: showInactivityWarning ? '60px' : undefined }}>
           {activeAnnouncement && (
             <div className="announcement-banner mb-6">
@@ -1055,6 +1091,8 @@ const App = () => {
               termDates={termDates} />
           )}
         </div>
+          </>
+        )}
       </div>
     </ErrorBoundary>
   );
