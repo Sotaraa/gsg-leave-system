@@ -88,17 +88,15 @@ export const loginWithEntra = async () => {
       throw new Error('MSAL instance not available');
     }
 
-    console.log('📱 Triggering login popup...');
-    const response = await instance.loginPopup(scopes.loginRequest);
+    console.log('📱 Triggering login redirect...');
+    // Use redirect instead of popup to avoid nested popup blocking
+    await instance.loginRedirect(scopes.loginRequest);
 
-    console.log('✅ Login successful, user:', response.account.username);
+    // If we get here, the redirect is happening - return success
+    // User will be redirected to Microsoft login, then back to app
     return {
       success: true,
-      user: {
-        email: response.account.username || response.account.homeAccountId,
-        name: response.account.name,
-        account: response.account,
-      },
+      user: null, // Will be set after redirect returns
     };
   } catch (error) {
     console.error('❌ Entra login error:', error);
@@ -116,7 +114,8 @@ export const logoutEntra = async () => {
 
     const accounts = instance.getAllAccounts();
     if (accounts.length > 0) {
-      await instance.logoutPopup({
+      // Use redirect for logout too (more reliable than popup)
+      await instance.logoutRedirect({
         postLogoutRedirectUri: '/',
       });
     }

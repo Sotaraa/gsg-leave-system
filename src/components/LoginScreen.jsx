@@ -13,16 +13,14 @@ const LoginScreen = ({ onLogin, error }) => {
     setEntraLoading(true);
     setEntraError('');
     try {
-      console.log('📍 Initializing MSAL and calling loginWithEntra()...');
+      console.log('📍 Calling loginWithEntra()...');
       const result = await loginWithEntra();
       console.log('📍 loginWithEntra result:', result);
 
       if (result.success) {
-        console.log('✅ Entra login successful, email:', result.user.email);
-        localStorage.setItem('GSG_USER_EMAIL', result.user.email);
-        localStorage.setItem('GSG_USER_NAME', result.user.name || '');
-        localStorage.setItem('GSG_AUTH_METHOD', 'entra');
-        setTimeout(() => window.location.reload(), 500);
+        console.log('✅ Login redirect initiated - user will be redirected to Microsoft login');
+        // loginRedirect doesn't return, it navigates away
+        // After user logs in, they'll be redirected back to this app
       } else {
         console.error('❌ Entra login failed:', result.error);
         setEntraError(`Login failed: ${result.error || 'Unknown error'}`);
