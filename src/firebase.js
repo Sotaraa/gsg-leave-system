@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAJWhXL1H2F28ZQZjJc0MIi8DzWNRYWgwE",
@@ -15,4 +15,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// Enable anonymous auth for Firestore read access
+signInAnonymously(auth).catch((error) => {
+  console.warn('Firebase anonymous auth failed (this is non-critical):', error);
+});
+
 export default app;

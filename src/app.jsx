@@ -4,7 +4,6 @@ import {
   collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc,
   query, where, getDocs, writeBatch, setDoc
 } from 'firebase/firestore';
-import { getAuth, signInWithPopup, OAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Megaphone, Maximize2, Minimize2 } from 'lucide-react';
 
 import CONFIG from './config.js';
@@ -122,77 +121,43 @@ const App = () => {
 
   useEffect(() => {
     if (!user) return;
-
-    const loadData = async () => {
-      try {
-        // Fetch all requests from Supabase
-        const { data: requestsData, error: reqError } = await supabase
-          .from('requests')
-          .select('*')
-          .order('submittedAt', { ascending: false });
-
-        if (reqError) throw reqError;
-        setRequests(requestsData || []);
-
-        // Create staff list from unique requesters in Supabase
-        const uniqueStaff = {};
-        (requestsData || []).forEach(req => {
-          if (req.employeeEmail && !uniqueStaff[req.employeeEmail]) {
-            uniqueStaff[req.employeeEmail] = {
-              id: req.employeeEmail,
-              email: req.employeeEmail,
-              name: req.employeeName,
-              department: req.department,
-              role: 'Staff',
-              allowance: 25,
-              carryForwardDays: 0,
-              isTermTime: false,
-              workingDays: [1, 2, 3, 4, 5]
-            };
-          }
-        });
-
-        const staffList = Object.values(uniqueStaff).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        setStaffList(staffList);
-
-        // Find current user's profile
-        const profile = staffList.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
-        const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
-
-        if (isSuper) setMyRole('Admin');
-        else if (profile) setMyRole(profile.role);
-        else setMyRole('Staff');
-
-        if (profile) {
-          setMyDept(profile.department || '');
-          setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
-          setAmITermTime(profile.isTermTime || false);
-          setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
-          if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
-          else setFormData(p => ({ ...p, type: 'Annual Leave' }));
-        }
-
-        // Fetch departments from Supabase
-        const { data: deptsData, error: deptError } = await supabase
-          .from('departments')
-          .select('name');
-
-        if (!deptError && deptsData) {
-          const custom = deptsData.map(d => d.name);
-          setDepartments([...new Set([...CONFIG.defaultDepartments, ...custom])].sort());
-        }
-
-        setIsLoading(false);
-      } catch (err) {
-        console.error('Error loading data:', err);
-        setIsLoading(false);
+    const unsubStaff = onSnapshot(subCol('staff'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setStaffList(list);
+      const profile = list.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
+      const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
+      if (isSuper) setMyRole('Admin');
+      else if (profile) setMyRole(profile.role);
+      else setMyRole('Staff');
+      if (profile) {
+        setMyDept(profile.department || '');
+        setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
+        setAmITermTime(profile.isTermTime || false);
+        setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
+        if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
+        else setFormData(p => ({ ...p, type: 'Annual Leave' }));
       }
-    };
+      setIsLoading(false);
+    }, (err) => { console.error(err); setIsLoading(false); });
 
-    loadData();
+    const unsubReqs = onSnapshot(subCol('requests'), (snap) => {
+      setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')));
+    });
 
-    // TODO: Migrate termDates, schoolTerms, announcements, and settings to Supabase
-    // For now, these are disabled to allow Supabase-only auth to work
+    const unsubDepts = onSnapshot(subCol('departments'), (snap) => {
+      const custom = snap.docs.map(d => d.data().name);
+      setDepartments([...new Set([...CONFIG.defaultDepartments, ...custom])].sort());
+    });
+
+    const unsubDates = onSnapshot(subCol('termDates'), (snap) => setTermDates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubSchoolTerms = onSnapshot(subCol('schoolTerms'), (snap) => setSchoolTerms(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.academicYear || '').localeCompare(b.academicYear || ''))));
+    const unsubAnnounce = onSnapshot(subCol('announcements'), (snap) => setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubSettings = onSnapshot(
+      doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'settings', 'global'),
+      (snap) => { if (snap.exists()) setSystemSettings(prev => ({ ...prev, ...snap.data() })); }
+    );
+
+    return () => { unsubStaff(); unsubReqs(); unsubDepts(); unsubDates(); unsubSchoolTerms(); unsubAnnounce(); unsubSettings(); };
   }, [user]);
 
   const addNotification = (msg) => {
@@ -397,27 +362,9 @@ const App = () => {
     });
   };
 
+  // Placeholder - login is now handled by Supabase in LoginScreen.jsx
   const handleLogin = async () => {
-    try {
-      setLoginError('');
-      const authInstance = getAuth();
-      const provider = new OAuthProvider('microsoft.com');
-      provider.addScope('User.ReadBasic.All');
-      provider.addScope('Mail.Send');
-      provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(authInstance, provider);
-      const credential = OAuthProvider.credentialFromResult(result);
-      const token = credential?.accessToken;
-      if (token) {
-        setGraphToken(token);
-        console.log('Graph token SET successfully');
-      } else {
-        console.warn('NO ACCESS TOKEN RETURNED - emails will not work');
-      }
-    } catch (e) {
-      setLoginError("Login Failed: " + e.message);
-      console.error('Login error:', e);
-    }
+    // This is deprecated - use Supabase auth via LoginScreen instead
   };
 
   const submitRequest = async (e) => {
@@ -437,33 +384,20 @@ const App = () => {
       return alert("Selected dates are weekends or Bank Holidays.");
     }
     
-    // SAVE TO SUPABASE
+    // SAVE TO FIREBASE
     const { hoursWorked: _hw, sickReason: _sr, ...formFields } = formData;
-    try {
-      const newRequest = {
-        ...formFields,
-        employeeName: user.displayName || user.name, // Use displayName or name from Supabase user
-        employeeEmail: user.email,
-        department: myDept,
-        status: 'Pending',
-        daysCount: days,
-        submittedAt: new Date().toISOString(),
-        ...(useHoursMode ? { hoursWorked: hoursVal, hoursPerDay: myHpd } : {}),
-        ...(formData.type === 'Sick Leave' && formData.sickReason ? { sickReason: formData.sickReason } : {})
-      };
-
-      const { data, error } = await supabase
-        .from('requests')
-        .insert([newRequest])
-        .select();
-
-      if (error) throw error;
-      addNotification("Request Submitted");
-    } catch (err) {
-      console.error('Error submitting request:', err);
-      addNotification("Error submitting request");
-      return;
-    }
+    await addDoc(subCol('requests'), {
+      ...formFields,
+      employeeName: user.displayName || user.name,
+      employeeEmail: user.email,
+      department: myDept,
+      status: 'Pending',
+      daysCount: days,
+      submittedAt: new Date().toISOString(),
+      ...(useHoursMode ? { hoursWorked: hoursVal, hoursPerDay: myHpd } : {}),
+      ...(formData.type === 'Sick Leave' && formData.sickReason ? { sickReason: formData.sickReason } : {})
+    });
+    addNotification("Request Submitted");
 
     const assignedApprover = myProfile?.approverEmail && !isEmailArchived(myProfile.approverEmail) ? myProfile.approverEmail : null;
     const baseRecipients = getNotificationRecipients(myDept);
