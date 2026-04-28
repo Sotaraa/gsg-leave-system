@@ -617,6 +617,28 @@ const EmployeeView = ({
                 </div>
               );
             })()}
+
+            {/* Hours entry for Medical Appointments */}
+            {formData.type === 'Medical Appt' && (() => {
+              const hpd = systemSettings?.hoursPerDay || 8;
+              const hrs = Number(formData.hoursWorked);
+              return (
+                <div className="mb-3 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs font-semibold text-blue-700 mb-1">Time Duration (optional)</p>
+                  <p className="text-xs text-blue-600 mb-2">Enter hours if tracking specific time — {hpd}h = 1 full day. Or use Half Day checkbox above.</p>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="0.5" max="8" step="0.5" className="w-28"
+                      placeholder={`e.g. 1, 2, ${hpd}`}
+                      value={formData.hoursWorked || ''}
+                      onChange={e => setFormData({ ...formData, hoursWorked: e.target.value })}
+                    />
+                    <span className="text-xs text-blue-600 font-medium">
+                      {hrs > 0 ? `= ${(hrs / hpd).toFixed(3).replace(/\.?0+$/, '')}d` : 'hours'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
             <TypeNote type={formData.type} currentHolidayYear={currentHolidayYear} startDate={formData.startDate}/>
             {(formData.type === 'Sick Leave' || formData.type === 'Medical Appt') && (
               <div className="mb-3">

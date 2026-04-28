@@ -340,6 +340,29 @@ const AdminView = ({
                   </div>
                 );
               })()}
+
+              {/* Hours entry for Medical Appointments */}
+              {manualLeave.type === 'Medical Appt' && (() => {
+                const selStaff = staffList.find(s => s.id === manualLeave.employeeId);
+                const hpd = Number(selStaff?.hoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
+                const hrs = Number(manualLeave.hoursWorked);
+                return (
+                  <div className="mb-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs font-semibold text-blue-700 mb-1">Appointment Duration (optional)</p>
+                    <p className="text-xs text-blue-600 mb-2">Log specific hours for the appointment, or use Half Day checkbox. {hpd}h = 1 full day.</p>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min="0.5" max="8" step="0.5" className="w-28"
+                        placeholder={`e.g. 1, 2, ${hpd}`}
+                        value={manualLeave.hoursWorked || ''}
+                        onChange={e => setManualLeave({ ...manualLeave, hoursWorked: e.target.value })}
+                      />
+                      <span className="text-xs text-blue-600 font-medium">
+                        {hrs > 0 ? `= ${(hrs / hpd).toFixed(3).replace(/\.?0+$/, '')}d` : 'hours'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
               {(manualLeave.type === 'Sick Leave' || manualLeave.type === 'Medical Appt') && (
                 <div className="mb-2">
                   <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">
