@@ -9,25 +9,19 @@ const LoginScreen = ({ onLogin, error }) => {
   const [entraLoading, setEntraLoading] = useState(false);
   const [entraError, setEntraError] = useState('');
   const [detectedOrg, setDetectedOrg] = useState(null);
-  const [showOrgSelector, setShowOrgSelector] = useState(false);
-  const [organizations, setOrganizations] = useState([]);
-  const [selectedOrgId, setSelectedOrgId] = useState(null);
-  const [loadingOrgs, setLoadingOrgs] = useState(false);
 
   /**
-   * Detect organization by email domain
-   * If found, use that org's config
-   * If not found, show selector dropdown
+   * Detect organization by email domain (SECURITY: Don't expose org list)
+   * If found, show confirmation badge
+   * If not found, don't show selector - user must use correct domain
    */
   const detectOrganization = async (emailAddress) => {
     if (!emailAddress || !emailAddress.includes('@')) {
       setDetectedOrg(null);
-      setShowOrgSelector(true);
       return;
     }
 
     try {
-      setLoadingOrgs(true);
       const emailDomain = '@' + emailAddress.split('@')[1];
       console.log(`🔍 Detecting organization for domain: ${emailDomain}`);
 
@@ -41,26 +35,13 @@ const LoginScreen = ({ onLogin, error }) => {
       if (org && !orgError) {
         console.log(`✅ Organization detected: ${org.name}`);
         setDetectedOrg(org);
-        setSelectedOrgId(org.id);
-        setShowOrgSelector(false);
       } else {
-        console.log(`ℹ️ No organization found for domain ${emailDomain}, showing selector`);
-        // Fetch all organizations for selector
-        const { data: allOrgs } = await supabase
-          .from('organizations')
-          .select('id, name')
-          .order('name');
-
-        setOrganizations(allOrgs || []);
-        setShowOrgSelector(true);
+        console.log(`ℹ️ No organization found for domain ${emailDomain}`);
         setDetectedOrg(null);
       }
     } catch (err) {
       console.error('❌ Error detecting organization:', err);
       setDetectedOrg(null);
-      setShowOrgSelector(true);
-    } finally {
-      setLoadingOrgs(false);
     }
   };
 
@@ -70,7 +51,6 @@ const LoginScreen = ({ onLogin, error }) => {
       detectOrganization(email);
     } else {
       setDetectedOrg(null);
-      setShowOrgSelector(false);
     }
   }, [email]);
 
@@ -218,30 +198,6 @@ const LoginScreen = ({ onLogin, error }) => {
                 <span className="text-sm text-green-700">
                   <strong>Organization detected:</strong> {detectedOrg.name}
                 </span>
-              </div>
-            )}
-
-            {/* Organization Selector Dropdown */}
-            {showOrgSelector && !detectedOrg && (
-              <div className="relative">
-                <label className="block text-xs font-semibold text-slate-700 mb-2">
-                  Select Your Organization
-                </label>
-                <select
-                  value={selectedOrgId || ''}
-                  onChange={(e) => setSelectedOrgId(e.target.value)}
-                  disabled={loadingOrgs}
-                  className="w-full px-4 py-3 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 transition-all disabled:opacity-50"
-                >
-                  <option value="">
-                    {loadingOrgs ? 'Loading organizations...' : 'Choose your organization...'}
-                  </option>
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
               </div>
             )}
 

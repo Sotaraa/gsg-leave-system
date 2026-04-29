@@ -13,8 +13,12 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
     adminLastName: '',
     adminEmail: '',
     defaultAllowance: 25,
-    hoursPerDay: 8
+    hoursPerDay: 8,
+    azureClientId: '',
+    azureTenantId: '',
+    notificationEmail: ''
   });
+  const [showSSO, setShowSSO] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -64,7 +68,7 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
 
       console.log(`📝 Creating organization: ${formData.organizationName} (${orgId})`);
 
-      // Insert organization record
+      // Insert organization record with SSO config
       const { data, error } = await supabase
         .from('organizations')
         .insert({
@@ -74,7 +78,13 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
           superAdmin: formData.adminEmail,
           isActive: true,
           defaultAllowance: formData.defaultAllowance,
-          hoursPerDay: formData.hoursPerDay
+          hoursPerDay: formData.hoursPerDay,
+          azureClientId: formData.azureClientId || null,
+          azureTenantId: formData.azureTenantId || null,
+          azureRedirectUri: `https://app.sotara.co.uk/auth/${orgId}`,
+          notificationEmail: formData.notificationEmail || formData.adminEmail,
+          useGraphApi: true,
+          ssoConfigured: !!(formData.azureClientId && formData.azureTenantId)
         })
         .select();
 
@@ -100,8 +110,12 @@ Domain: ${domain}`
         adminLastName: '',
         adminEmail: '',
         defaultAllowance: 25,
-        hoursPerDay: 8
+        hoursPerDay: 8,
+        azureClientId: '',
+        azureTenantId: '',
+        notificationEmail: ''
       });
+      setShowSSO(false);
 
       // Call callback if provided
       if (onSuccess) onSuccess(data[0]);
@@ -317,6 +331,77 @@ Domain: ${domain}`
                   </div>
                 </div>
 
+              </div>
+
+              {/* Azure AD SSO Configuration (Optional) */}
+              <div className="border-t border-white/40 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowSSO(!showSSO)}
+                  className="text-sm font-bold text-blue-600 hover:text-blue-700 mb-2 flex items-center gap-1"
+                >
+                  {showSSO ? '▼' : '▶'} Configure Azure AD SSO (Optional)
+                </button>
+
+                {showSSO && (
+                  <div className="space-y-3 bg-blue-50/30 p-3 rounded-lg border border-blue-200/30">
+                    <p className="text-xs text-slate-600 mb-2">
+                      Leave blank for now. Can be configured later in Organization Settings.
+                    </p>
+
+                    {/* Azure Client ID */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">
+                        Azure Client ID
+                      </label>
+                      <input
+                        type="text"
+                        name="azureClientId"
+                        value={formData.azureClientId}
+                        onChange={handleFormChange}
+                        placeholder="e.g., xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full px-4 py-2 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder-slate-500 text-xs"
+                      />
+                      <p className="text-xs text-slate-500 mt-0.5">From Azure AD app registration</p>
+                    </div>
+
+                    {/* Azure Tenant ID */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">
+                        Azure Tenant ID
+                      </label>
+                      <input
+                        type="text"
+                        name="azureTenantId"
+                        value={formData.azureTenantId}
+                        onChange={handleFormChange}
+                        placeholder="e.g., xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full px-4 py-2 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder-slate-500 text-xs"
+                      />
+                      <p className="text-xs text-slate-500 mt-0.5">School's Azure AD directory ID</p>
+                    </div>
+
+                    {/* Notification Email */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">
+                        Notification Email
+                      </label>
+                      <input
+                        type="email"
+                        name="notificationEmail"
+                        value={formData.notificationEmail}
+                        onChange={handleFormChange}
+                        placeholder="e.g., noreply@stjames.co.uk"
+                        className="w-full px-4 py-2 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder-slate-500 text-xs"
+                      />
+                      <p className="text-xs text-slate-500 mt-0.5">Email to send notifications from (defaults to admin email)</p>
+                    </div>
+
+                    <div className="bg-blue-100/40 border border-blue-200/50 p-2 rounded text-xs text-blue-800">
+                      <strong>Setup Instructions:</strong> After organization creation, the school admin can add these details in Organization Settings.
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Buttons */}
