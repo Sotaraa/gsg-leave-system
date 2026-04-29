@@ -1,12 +1,78 @@
-import React, { useState } from 'react';
-import { LogIn, Sparkles, Loader } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogIn, Sparkles, Loader, AlertCircle } from 'lucide-react';
 import { loginWithEntra } from '../services/entraAuth';
+import { supabase } from '../supabase';
 
 const LoginScreen = ({ onLogin, error }) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [entraLoading, setEntraLoading] = useState(false);
   const [entraError, setEntraError] = useState('');
+  const [detectedOrg, setDetectedOrg] = useState(null);
+  const [showOrgSelector, setShowOrgSelector] = useState(false);
+  const [organizations, setOrganizations] = useState([]);
+  const [selectedOrgId, setSelectedOrgId] = useState(null);
+  const [loadingOrgs, setLoadingOrgs] = useState(false);
+
+  /**
+   * Detect organization by email domain
+   * If found, use that org's config
+   * If not found, show selector dropdown
+   */
+  const detectOrganization = async (emailAddress) => {
+    if (!emailAddress || !emailAddress.includes('@')) {
+      setDetectedOrg(null);
+      setShowOrgSelector(true);
+      return;
+    }
+
+    try {
+      setLoadingOrgs(true);
+      const emailDomain = '@' + emailAddress.split('@')[1];
+      console.log(`🔍 Detecting organization for domain: ${emailDomain}`);
+
+      // Check if organization exists for this domain
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .select('id, name, domain')
+        .eq('domain', emailDomain)
+        .single();
+
+      if (org && !orgError) {
+        console.log(`✅ Organization detected: ${org.name}`);
+        setDetectedOrg(org);
+        setSelectedOrgId(org.id);
+        setShowOrgSelector(false);
+      } else {
+        console.log(`ℹ️ No organization found for domain ${emailDomain}, showing selector`);
+        // Fetch all organizations for selector
+        const { data: allOrgs } = await supabase
+          .from('organizations')
+          .select('id, name')
+          .order('name');
+
+        setOrganizations(allOrgs || []);
+        setShowOrgSelector(true);
+        setDetectedOrg(null);
+      }
+    } catch (err) {
+      console.error('❌ Error detecting organization:', err);
+      setDetectedOrg(null);
+      setShowOrgSelector(true);
+    } finally {
+      setLoadingOrgs(false);
+    }
+  };
+
+  // Detect organization when email changes
+  useEffect(() => {
+    if (email && email.length > 5) {
+      detectOrganization(email);
+    } else {
+      setDetectedOrg(null);
+      setShowOrgSelector(false);
+    }
+  }, [email]);
 
   const handleEntraLogin = async () => {
     console.log('🔵 Microsoft login button clicked');
@@ -38,12 +104,50 @@ const LoginScreen = ({ onLogin, error }) => {
     if (!email) return;
 
     setLoading(true);
+    setEntraError('');
+
     try {
-      localStorage.setItem('GSG_USER_EMAIL', email);
-      localStorage.setItem('GSG_AUTH_METHOD', 'email');
-      window.location.reload();
+      // SECURITY: Verify user belongs to a known organization OR is a legacy GSG user
+      const emailDomain = '@' + email.split('@')[1];
+
+      // Check 1: Does domain match a known organization?
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .eq('domain', emailDomain)
+        .single();
+
+      if (org) {
+        // ✅ Known organization - allow login
+        localStorage.setItem('GSG_USER_EMAIL', email);
+        localStorage.setItem('GSG_USER_ORGANIZATION_ID', org.id);
+        localStorage.setItem('GSG_AUTH_METHOD', 'email');
+        window.location.reload();
+        return;
+      }
+
+      // Check 2: Is this a legacy GSG user in the requests table?
+      const { data: legacyUser } = await supabase
+        .from('requests')
+        .select('employeeemail')
+        .eq('employeeemail', email)
+        .limit(1);
+
+      if (legacyUser && legacyUser.length > 0) {
+        // ✅ Known legacy GSG user - allow login
+        localStorage.setItem('GSG_USER_EMAIL', email);
+        localStorage.setItem('GSG_AUTH_METHOD', 'email');
+        window.location.reload();
+        return;
+      }
+
+      // 🚫 SECURITY: Email not in any organization or legacy system
+      setEntraError('Access denied. Your email is not registered with any organization. Please contact your administrator.');
+      setLoading(false);
+
     } catch (err) {
       console.error("Login Error:", err);
+      setEntraError('Login failed. Please try again.');
       setLoading(false);
     }
   };
@@ -106,6 +210,40 @@ const LoginScreen = ({ onLogin, error }) => {
                 required
               />
             </div>
+
+            {/* Organization Auto-Detected Badge */}
+            {detectedOrg && (
+              <div className="p-3 bg-green-50/80 border border-green-200/50 rounded-lg flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                <span className="text-sm text-green-700">
+                  <strong>Organization detected:</strong> {detectedOrg.name}
+                </span>
+              </div>
+            )}
+
+            {/* Organization Selector Dropdown */}
+            {showOrgSelector && !detectedOrg && (
+              <div className="relative">
+                <label className="block text-xs font-semibold text-slate-700 mb-2">
+                  Select Your Organization
+                </label>
+                <select
+                  value={selectedOrgId || ''}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  disabled={loadingOrgs}
+                  className="w-full px-4 py-3 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 transition-all disabled:opacity-50"
+                >
+                  <option value="">
+                    {loadingOrgs ? 'Loading organizations...' : 'Choose your organization...'}
+                  </option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <button
               type="submit"

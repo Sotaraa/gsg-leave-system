@@ -1,6 +1,78 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { mock_staff } from '../data/mockdata';
+import * as msal from '@azure/msal-browser';
+
+/**
+ * Get organization's Azure AD configuration from Supabase
+ *
+ * @param {string} organizationId - Organization ID
+ * @returns {Promise<{auth: {clientId, authority, redirectUri}, org: object}>}
+ */
+const getOrganizationConfig = async (organizationId) => {
+  try {
+    const { data: org, error } = await supabase
+      .from('organizations')
+      .select('id, name, azureClientId, azureTenantId, azureRedirectUri, ssoConfigured')
+      .eq('id', organizationId)
+      .single();
+
+    if (error || !org) {
+      throw new Error(`Organization ${organizationId} not found`);
+    }
+
+    if (!org.ssoConfigured || !org.azureClientId || !org.azureTenantId) {
+      console.warn(`⚠️ Azure AD SSO not fully configured for ${org.name}`);
+    }
+
+    return {
+      auth: {
+        clientId: org.azureClientId,
+        authority: `https://login.microsoftonline.com/${org.azureTenantId}`,
+        redirectUri: org.azureRedirectUri
+      },
+      org: org
+    };
+  } catch (error) {
+    console.error('❌ Error fetching organization config:', error);
+    throw error;
+  }
+};
+
+/**
+ * Initialize MSAL dynamically for the given organization
+ *
+ * @param {object} config - MSAL configuration with auth settings
+ * @returns {PublicClientApplication} MSAL instance
+ */
+const initializeMSAL = (config) => {
+  try {
+    const msalConfig = {
+      auth: {
+        clientId: config.auth.clientId,
+        authority: config.auth.authority,
+        redirectUri: config.auth.redirectUri
+      },
+      cache: {
+        cacheLocation: 'localStorage',
+        storeAuthStateInCookie: false
+      },
+      system: {
+        loggerOptions: {
+          loggerCallback: (level, message, containsPii) => {
+            if (containsPii) return;
+            console.log(`[MSAL] ${message}`);
+          }
+        }
+      }
+    };
+
+    return new msal.PublicClientApplication(msalConfig);
+  } catch (error) {
+    console.error('❌ Error initializing MSAL:', error);
+    throw error;
+  }
+};
 
 /**
  * Ensure user exists in user_profiles table for RLS enforcement
@@ -107,6 +179,40 @@ export const useAuth = () => {
             // Organization found in Supabase - this is a new multi-tenant user
             console.log(`✅ Organization found: ${org.name}`);
 
+            // Step 1.5: Fetch organization's Azure AD config
+            let organizationConfig = null;
+            let msalInstance = null;
+            let azureToken = null;
+
+            try {
+              const { auth: authConfig, org: orgData } = await getOrganizationConfig(org.id);
+              organizationConfig = { auth: authConfig, ...orgData };
+
+              // Initialize MSAL with organization's Azure AD config
+              if (authConfig.clientId && authConfig.redirectUri) {
+                msalInstance = initializeMSAL({ auth: authConfig });
+                console.log(`✅ MSAL initialized for ${org.name}`);
+
+                // Try to get token from MSAL cache
+                try {
+                  const accounts = msalInstance.getAllAccounts();
+                  if (accounts.length > 0) {
+                    const tokenResponse = await msalInstance.acquireTokenSilent({
+                      scopes: ['Mail.Send', 'User.Read'],
+                      account: accounts[0]
+                    });
+                    azureToken = tokenResponse.accessToken;
+                    console.log(`✅ Azure token retrieved for ${org.name}`);
+                  }
+                } catch (tokenError) {
+                  console.warn(`⚠️ No cached token for ${org.name}, user will need to sign in`);
+                }
+              }
+            } catch (configError) {
+              console.warn(`⚠️ Could not load Azure AD config: ${configError.message}`);
+              // Continue with basic user setup even if Azure AD config fails
+            }
+
             // Step 2: Load user from Supabase mt_staff table
             const { data: staffData, error: staffError } = await supabase
               .from('mt_staff')
@@ -132,7 +238,10 @@ export const useAuth = () => {
                 organization: org.id,
                 organizationName: org.name,
                 dataSource: 'supabase',
-                isOrgAdmin: staffData.role === 'Admin'
+                isOrgAdmin: staffData.role === 'Admin',
+                organizationConfig: organizationConfig,
+                azureToken: azureToken,
+                msalInstance: msalInstance
               });
             } else {
               // Organization exists but user not in staff table - invite them as new user
@@ -153,14 +262,18 @@ export const useAuth = () => {
                 organizationName: org.name,
                 dataSource: 'supabase',
                 isGuest: true,
-                isOrgAdmin: false
+                isOrgAdmin: false,
+                organizationConfig: organizationConfig,
+                azureToken: azureToken,
+                msalInstance: msalInstance
               });
             }
           } else {
-            // No organization found - fall back to Firebase (GSG user)
-            console.log(`ℹ️ No Supabase organization found, falling back to Firebase (GSG)`);
+            // No organization found - check legacy Firebase/GSG requests table
+            console.log(`ℹ️ No Supabase organization found, checking legacy GSG records`);
 
-            // Fetch user from Supabase requests table (legacy auth check)
+            // SECURITY: Only allow access if email exists in legacy requests table
+            // This prevents random emails from gaining access to any organization
             const { data: requests, error } = await supabase
               .from('requests')
               .select('employeename, employeeemail, department')
@@ -168,7 +281,9 @@ export const useAuth = () => {
               .limit(1);
 
             if (requests && requests.length > 0) {
+              // ✅ Known legacy GSG user - allow access
               const userData = requests[0];
+              console.log(`✅ Legacy GSG user found: ${userData.employeename}`);
               setUser({
                 uid: userData.employeeemail,
                 displayName: userData.employeename,
@@ -176,26 +291,18 @@ export const useAuth = () => {
                 department: userData.department || '',
                 role: 'Staff',
                 allowance: 25,
-                organization: 'gardener-schools', // Default GSG org
+                organization: 'gardener-schools',
                 organizationName: 'Gardener Schools Group',
                 dataSource: 'firebase'
               });
             } else {
-              // Fallback - user not found anywhere
-              // Use Entra name if available, otherwise email prefix
-              const displayName = storedName || storedEmail.split('@')[0];
-              setUser({
-                uid: storedEmail,
-                displayName: displayName,
-                email: storedEmail,
-                department: 'Unknown',
-                role: 'Staff',
-                allowance: 25,
-                organization: 'gardener-schools',
-                organizationName: 'Gardener Schools Group',
-                dataSource: 'firebase',
-                isGuest: true
-              });
+              // 🚫 SECURITY: Unknown email - deny access completely
+              // User must belong to a known organization or be a legacy GSG user
+              console.warn(`🚫 Access denied: ${storedEmail} does not belong to any organization`);
+              localStorage.removeItem('GSG_USER_EMAIL');
+              localStorage.removeItem('GSG_USER_ORGANIZATION_ID');
+              localStorage.removeItem('GSG_AUTH_METHOD');
+              setUser(null);
             }
           }
 
@@ -218,4 +325,13 @@ export const useAuth = () => {
   }, []);
 
   return { user, loading, authMethod };
+};
+
+/**
+ * Export functions for external use in components
+ */
+export const authServices = {
+  getOrganizationConfig,
+  initializeMSAL,
+  ensureUserProfile
 };
