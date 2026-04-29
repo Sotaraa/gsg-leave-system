@@ -826,13 +826,20 @@ export const settingsApi = {
 export const createRealtimeListener = (table, organizationId, callback) => {
   try {
     const subscription = supabase
-      .from(table)
-      .on('*', (payload) => {
-        // Filter by organization_id if the table has it
-        if (payload.new?.organization_id === organizationId || payload.old?.organization_id === organizationId) {
+      .channel(`realtime:${table}:${organizationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: table,
+          filter: `organization_id=eq.${organizationId}`
+        },
+        (payload) => {
+          // Trigger callback with payload
           callback(payload);
         }
-      })
+      )
       .subscribe();
 
     console.log(`🔔 Real-time listener created for ${table} (org: ${organizationId})`);
@@ -882,7 +889,9 @@ export const setupRealtimeListeners = (organizationId, callbacks) => {
  */
 export const cleanupRealtimeListeners = (subscriptions) => {
   subscriptions.forEach(sub => {
-    supabase.removeSubscription(sub);
+    if (sub && typeof sub.unsubscribe === 'function') {
+      sub.unsubscribe();
+    }
   });
   console.log(`✅ ${subscriptions.length} real-time listeners cleaned up`);
 };
