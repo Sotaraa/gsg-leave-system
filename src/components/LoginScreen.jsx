@@ -191,12 +191,12 @@ const LoginScreen = ({ onLogin, error }) => {
               />
             </div>
 
-            {/* Organization Auto-Detected Badge */}
+            {/* Organization Match Badge - don't reveal org name for security */}
             {detectedOrg && (
               <div className="p-3 bg-green-50/80 border border-green-200/50 rounded-lg flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-600 rounded-full"></div>
                 <span className="text-sm text-green-700">
-                  <strong>Organization detected:</strong> {detectedOrg.name}
+                  Domain recognized. Click Sign In to continue.
                 </span>
               </div>
             )}
