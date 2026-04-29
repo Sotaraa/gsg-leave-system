@@ -413,22 +413,20 @@ const App = () => {
   }, [staffList, requests, systemSettings.maxCarryForwardDays, systemSettings.carryForwardEnabled]);
 
   const applyCarryForward = async (carryData, closingDateStr) => {
-    const resetDate = new Date().toISOString().split('T')[0];
-    const batch = writeBatch(db);
-    carryData.forEach(({ staffId, carryForward }) => {
-      batch.update(
-        doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'staff', staffId),
-        { carryForwardDays: carryForward }
-      );
-    });
-    await batch.commit();
-    await setDoc(
-      doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'settings', 'global'),
-      { lastYearResetDate: resetDate, lastYearResetClosingDate: closingDateStr || resetDate },
-      { merge: true }
-    );
-    addNotification(`Holiday year reset. Carry forward applied for ${carryData.length} staff.`);
-    return true;
+    try {
+      const resetDate = new Date().toISOString().split('T')[0];
+      await supabaseApi.staffApi.applyCarryForward(carryData, user.organization);
+      await supabaseApi.settingsApi.updateSettings({
+        lastYearResetDate: resetDate,
+        lastYearResetClosingDate: closingDateStr || resetDate
+      }, user.organization);
+      addNotification(`Holiday year reset. Carry forward applied for ${carryData.length} staff.`);
+      return true;
+    } catch (error) {
+      console.error('Error applying carry forward:', error);
+      addNotification("Error applying carry forward");
+      return false;
+    }
   };
 
   const getAllowanceStats = (taken, allowance, isTermTime) => {
@@ -478,20 +476,26 @@ const App = () => {
       return alert("Selected dates are weekends or Bank Holidays.");
     }
     
-    // SAVE TO FIREBASE
+    // SAVE TO SUPABASE
     const { hoursWorked: _hw, sickReason: _sr, ...formFields } = formData;
-    await addDoc(subCol('requests'), {
-      ...formFields,
-      employeeName: user.displayName || user.name,
-      employeeEmail: user.email,
-      department: myDept,
-      status: 'Pending',
-      daysCount: days,
-      submittedAt: new Date().toISOString(),
-      ...(useHoursMode ? { hoursWorked: hoursVal, hoursPerDay: myHpd } : {}),
-      ...(formData.type === 'Sick Leave' && formData.sickReason ? { sickReason: formData.sickReason } : {})
-    });
-    addNotification("Request Submitted");
+    try {
+      await supabaseApi.requestsApi.submitRequest({
+        ...formFields,
+        employeeName: user.displayName || user.name,
+        employeeEmail: user.email,
+        department: myDept,
+        status: 'Pending',
+        daysCount: days,
+        submittedAt: new Date().toISOString(),
+        ...(useHoursMode ? { hoursWorked: hoursVal, hoursPerDay: myHpd } : {}),
+        ...(formData.type === 'Sick Leave' && formData.sickReason ? { sickReason: formData.sickReason } : {})
+      }, user.organization);
+      addNotification("Request Submitted");
+    } catch (error) {
+      console.error('Error submitting request:', error);
+      addNotification("Error submitting request");
+      return;
+    }
 
     const assignedApprover = myProfile?.approverEmail && !isEmailArchived(myProfile.approverEmail) ? myProfile.approverEmail : null;
     const baseRecipients = getNotificationRecipients(myDept);
@@ -629,105 +633,127 @@ const App = () => {
 
   const deleteRequest = async (id) => {
     if (confirm("Delete this request?")) {
-      const req = requests.find(r => r.id === id);
-      await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'requests', id));
-      addNotification("Deleted");
-      if (req) {
-        const allRecipients = [...new Set([req.employeeEmail, ...getNotificationRecipients(req.department)])];
-        const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
-        await sendEmail(graphToken, activeRecipients,
-          `Leave Record Deleted: ${req.employeeName}`,
-          '🗑️ Leave Record Deleted',
-          '#6b7280',
-          [
-            { label: 'Employee', value: req.employeeName },
-            { label: 'Leave Type', value: req.type },
-            { label: 'Start Date', value: formatDateUK(req.startDate) },
-            { label: 'End Date', value: formatDateUK(req.endDate) },
-            { label: 'Days', value: `${req.daysCount} day(s)` },
-            { label: 'Deleted By', value: user.displayName }
-          ],
-          'This leave record has been removed from the GSG HR Portal.'
-        );
+      try {
+        const req = requests.find(r => r.id === id);
+        await supabaseApi.requestsApi.deleteRequest(id, user.organization);
+        addNotification("Deleted");
+        if (req) {
+          const allRecipients = [...new Set([req.employeeEmail, ...getNotificationRecipients(req.department)])];
+          const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
+          await sendEmail(graphToken, activeRecipients,
+            `Leave Record Deleted: ${req.employeeName}`,
+            '🗑️ Leave Record Deleted',
+            '#6b7280',
+            [
+              { label: 'Employee', value: req.employeeName },
+              { label: 'Leave Type', value: req.type },
+              { label: 'Start Date', value: formatDateUK(req.startDate) },
+              { label: 'End Date', value: formatDateUK(req.endDate) },
+              { label: 'Days', value: `${req.daysCount} day(s)` },
+              { label: 'Deleted By', value: user.displayName }
+            ],
+            'This leave record has been removed from the GSG HR Portal.'
+          );
+        }
+      } catch (error) {
+        console.error('Error deleting request:', error);
+        addNotification("Error deleting request");
       }
     }
   };
 
   const saveStaff = async (e) => {
     e.preventDefault();
-    const data = { ...newStaff, allowance: Number(newStaff.allowance) };
-    if (adminEditId) {
-      await updateDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'staff', adminEditId), data);
-    } else {
-      await addDoc(subCol('staff'), { ...data, isArchived: false });
+    try {
+      const data = { ...newStaff, allowance: Number(newStaff.allowance) };
+      if (adminEditId) {
+        await supabaseApi.staffApi.updateStaff(adminEditId, data, user.organization);
+      } else {
+        await supabaseApi.staffApi.addStaff({ ...data, isArchived: false }, user.organization);
+      }
+      addNotification("Staff Saved");
+      setNewStaff({ name: '', email: '', department: departments[0], role: 'Staff', allowance: systemSettings.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0, workingDays: [], hoursPerDay: null });
+      setAdminEditId(null);
+    } catch (error) {
+      console.error('Error saving staff:', error);
+      addNotification("Error saving staff");
     }
-    addNotification("Staff Saved");
-    setNewStaff({ name: '', email: '', department: departments[0], role: 'Staff', allowance: systemSettings.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0, workingDays: [], hoursPerDay: null });
-    setAdminEditId(null);
   };
 
   const handleManualAdd = async (e) => {
     e.preventDefault();
-    const staff = staffList.find(s => s.id === manualLeave.employeeId);
-    if (!staff) return alert("Select staff");
-    if (staff.isTermTime && manualLeave.type === 'Annual Leave') return alert("Action Blocked: Term Time contract.");
-    const endStr = manualLeave.isHalfDay ? manualLeave.startDate : manualLeave.endDate;
-    if (checkForOverlap(staff.email, manualLeave.startDate, endStr)) return alert("Duplicate Booking.");
-    if (!confirm("Confirm adding this record?")) return;
-    const staffWorkPattern = staff.workingDays?.length ? staff.workingDays : [1, 2, 3, 4, 5];
-    const hpd = Number(staff.hoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
-    const hoursEntered = Number(manualLeave.hoursWorked);
-    const useHoursMode = (manualLeave.type === CONFIG.termTimeWorkType || manualLeave.type === CONFIG.extraHoursType) && hoursEntered > 0;
-    const days = useHoursMode
-      ? Math.round((hoursEntered / hpd) * 1000) / 1000
-      : calculateWorkingDays(manualLeave.startDate, manualLeave.endDate, manualLeave.isHalfDay, termDates, staffWorkPattern);
-    if (isNaN(days) || days < 0) return alert("Invalid days count. Please check the dates and hours entered.");
-    const manualRecord = {
-      employeeName: staff.name, // Ensure full name is preserved
-      employeeEmail: staff.email, 
-      department: staff.department,
-      type: manualLeave.type, startDate: manualLeave.startDate, endDate: manualLeave.endDate,
-      isHalfDay: manualLeave.isHalfDay,
-      status: 'Approved', daysCount: days, submittedAt: new Date().toISOString(),
-      ...(useHoursMode ? { hoursWorked: hoursEntered, hoursPerDay: hpd } : {}),
-      ...(manualLeave.sickReason && manualLeave.type === 'Sick Leave' ? { sickReason: manualLeave.sickReason } : {})
-    };
-    if (manualLeave.approvalSubType) manualRecord.approvalSubType = manualLeave.approvalSubType;
-    await addDoc(subCol('requests'), manualRecord);
-    addNotification("Absence Recorded");
+    try {
+      const staff = staffList.find(s => s.id === manualLeave.employeeId);
+      if (!staff) return alert("Select staff");
+      if (staff.isTermTime && manualLeave.type === 'Annual Leave') return alert("Action Blocked: Term Time contract.");
+      const endStr = manualLeave.isHalfDay ? manualLeave.startDate : manualLeave.endDate;
+      if (checkForOverlap(staff.email, manualLeave.startDate, endStr)) return alert("Duplicate Booking.");
+      if (!confirm("Confirm adding this record?")) return;
+      const staffWorkPattern = staff.workingDays?.length ? staff.workingDays : [1, 2, 3, 4, 5];
+      const hpd = Number(staff.hoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
+      const hoursEntered = Number(manualLeave.hoursWorked);
+      const useHoursMode = (manualLeave.type === CONFIG.termTimeWorkType || manualLeave.type === CONFIG.extraHoursType) && hoursEntered > 0;
+      const days = useHoursMode
+        ? Math.round((hoursEntered / hpd) * 1000) / 1000
+        : calculateWorkingDays(manualLeave.startDate, manualLeave.endDate, manualLeave.isHalfDay, termDates, staffWorkPattern);
+      if (isNaN(days) || days < 0) return alert("Invalid days count. Please check the dates and hours entered.");
+      const manualRecord = {
+        employeeName: staff.name,
+        employeeEmail: staff.email,
+        department: staff.department,
+        type: manualLeave.type,
+        startDate: manualLeave.startDate,
+        endDate: manualLeave.endDate,
+        isHalfDay: manualLeave.isHalfDay,
+        status: 'Approved',
+        daysCount: days,
+        submittedAt: new Date().toISOString(),
+        importedSilently: manualLeave.silentEmail,
+        ...(useHoursMode ? { hoursWorked: hoursEntered, hoursPerDay: hpd } : {}),
+        ...(manualLeave.sickReason && manualLeave.type === 'Sick Leave' ? { sickReason: manualLeave.sickReason } : {})
+      };
+      if (manualLeave.approvalSubType) manualRecord.approvalSubType = manualLeave.approvalSubType;
 
-    if (!manualLeave.silentEmail) {
-      const allRecipients = [...new Set([staff.email, ...getNotificationRecipients(staff.department)])];
-      const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
-      await sendEmail(graphToken, activeRecipients,
-        `Absence Recorded: ${staff.name}`,
-        '📋 Absence Manually Recorded',
-        '#1d4ed8',
-        [
-          { label: 'Employee', value: staff.name },
-          { label: 'Department', value: staff.department },
-          { label: 'Leave Type', value: manualLeave.type },
-          { label: 'Start Date', value: formatDateUK(manualLeave.startDate) },
-          { label: 'End Date', value: manualLeave.isHalfDay ? 'Half Day' : formatDateUK(manualLeave.endDate) },
-          { label: 'Days', value: useHoursMode ? `${days} day(s) (${hoursEntered}h @ ${hpd}h/day)` : `${days} day(s)` },
-          { label: 'Recorded By', value: user.displayName }
-        ],
-        'This absence has been manually recorded in the GSG HR Portal by an administrator.'
-      );
+      await supabaseApi.requestsApi.submitRequest(manualRecord, user.organization);
+      addNotification("Absence Recorded");
+
+      if (!manualLeave.silentEmail) {
+        const allRecipients = [...new Set([staff.email, ...getNotificationRecipients(staff.department)])];
+        const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
+        await sendEmail(graphToken, activeRecipients,
+          `Absence Recorded: ${staff.name}`,
+          '📋 Absence Manually Recorded',
+          '#1d4ed8',
+          [
+            { label: 'Employee', value: staff.name },
+            { label: 'Department', value: staff.department },
+            { label: 'Leave Type', value: manualLeave.type },
+            { label: 'Start Date', value: formatDateUK(manualLeave.startDate) },
+            { label: 'End Date', value: manualLeave.isHalfDay ? 'Half Day' : formatDateUK(manualLeave.endDate) },
+            { label: 'Days', value: useHoursMode ? `${days} day(s) (${hoursEntered}h @ ${hpd}h/day)` : `${days} day(s)` },
+            { label: 'Recorded By', value: user.displayName }
+          ],
+          'This absence has been manually recorded in the GSG HR Portal by an administrator.'
+        );
+      }
+      setManualLeave(p => ({ ...p, silentEmail: false, hoursWorked: '', sickReason: '' }));
+    } catch (error) {
+      console.error('Error recording absence:', error);
+      addNotification("Error recording absence");
     }
-    setManualLeave(p => ({ ...p, silentEmail: false, hoursWorked: '', sickReason: '' })); 
   };
 
   const handleDeleteSilentImports = async () => {
-    const silentRecords = requests.filter(r => r.importedSilently === true);
-    if (!silentRecords.length) return alert('No silently imported records found to delete.');
-    if (!confirm(`This will permanently delete all ${silentRecords.length} silently imported record${silentRecords.length !== 1 ? 's' : ''}. This cannot be undone — continue?`)) return;
-    const batch = writeBatch(db);
-    silentRecords.forEach(r => {
-      batch.delete(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'requests', r.id));
-    });
-    await batch.commit();
-    addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
+    try {
+      const silentRecords = requests.filter(r => r.importedSilently === true);
+      if (!silentRecords.length) return alert('No silently imported records found to delete.');
+      if (!confirm(`This will permanently delete all ${silentRecords.length} silently imported record${silentRecords.length !== 1 ? 's' : ''}. This cannot be undone — continue?`)) return;
+      await supabaseApi.requestsApi.deleteSilentImports(user.organization);
+      addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
+    } catch (error) {
+      console.error('Error deleting silent imports:', error);
+      addNotification("Error deleting silent imports");
+    }
   };
 
   const handleBulkImport = async (records) => {
@@ -788,15 +814,25 @@ const App = () => {
 
   const toggleArchiveStaff = async (id, currentStatus) => {
     if (confirm(currentStatus ? "Restore this user?" : "Archive this user?")) {
-      await updateDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'staff', id), { isArchived: !currentStatus });
-      addNotification(currentStatus ? "User Restored" : "User Archived");
+      try {
+        await supabaseApi.staffApi.toggleArchiveStaff(id, !currentStatus, user.organization);
+        addNotification(currentStatus ? "User Restored" : "User Archived");
+      } catch (error) {
+        console.error('Error toggling archive status:', error);
+        addNotification("Error updating user");
+      }
     }
   };
 
   const permanentlyDeleteStaff = async (id, name) => {
     if (!confirm(`⚠️ PERMANENTLY DELETE ${name}?\n\nThis will remove them from the system completely. This cannot be undone.\n\nAre you absolutely sure?`)) return;
-    await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'staff', id));
-    addNotification(`${name} permanently deleted`);
+    try {
+      await supabaseApi.staffApi.deleteStaff(id, user.organization);
+      addNotification(`${name} permanently deleted`);
+    } catch (error) {
+      console.error('Error deleting staff:', error);
+      addNotification("Error deleting user");
+    }
   };
 
   const prepareEdit = (staff) => {
@@ -812,70 +848,116 @@ const App = () => {
 
   const addDepartment = async () => {
     if (!newDeptName) return;
-    await addDoc(subCol('departments'), { name: newDeptName });
-    addNotification("Department Added");
-    setNewDeptName('');
+    try {
+      await supabaseApi.departmentsApi.addDepartment(newDeptName, user.organization);
+      addNotification("Department Added");
+      setNewDeptName('');
+    } catch (error) {
+      console.error('Error adding department:', error);
+      addNotification("Error adding department");
+    }
   };
 
-  const deleteDepartment = async (name) => {
+  const deleteDepartment = async (deptId, name) => {
     if (CONFIG.defaultDepartments.includes(name)) return alert("Cannot delete default.");
     if (confirm(`Delete ${name}?`)) {
-      const snap = await getDocs(query(subCol('departments'), where('name', '==', name)));
-      snap.forEach(d => deleteDoc(d.ref));
-      addNotification("Department Deleted");
+      try {
+        await supabaseApi.departmentsApi.deleteDepartment(deptId, user.organization);
+        addNotification("Department Deleted");
+      } catch (error) {
+        console.error('Error deleting department:', error);
+        addNotification("Error deleting department");
+      }
     }
   };
 
   const addTermDate = async () => {
     if (!newTermDate.date || !newTermDate.description) return;
-    await addDoc(subCol('termDates'), newTermDate);
-    addNotification("Date Added");
-    setNewTermDate({ description: '', date: '', type: 'Term Start' });
+    try {
+      await supabaseApi.termDatesApi.addTermDate(newTermDate, user.organization);
+      addNotification("Date Added");
+      setNewTermDate({ description: '', date: '', type: 'Term Start' });
+    } catch (error) {
+      console.error('Error adding term date:', error);
+      addNotification("Error adding date");
+    }
   };
 
   const deleteTermDate = async (id) => {
     if (confirm("Delete date?")) {
-      await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'termDates', id));
-      addNotification("Deleted");
+      try {
+        await supabaseApi.termDatesApi.deleteTermDate(id, user.organization);
+        addNotification("Deleted");
+      } catch (error) {
+        console.error('Error deleting term date:', error);
+        addNotification("Error deleting date");
+      }
     }
   };
 
   const addSchoolTerm = async () => {
     if (!newSchoolTerm.autumnStart) return;
-    const year = newSchoolTerm.autumnStart.substring(0, 4);
-    const label = newSchoolTerm.academicYear || `${year}-${Number(year) + 1}`;
-    await addDoc(subCol('schoolTerms'), { ...newSchoolTerm, academicYear: label });
-    addNotification("School term added");
-    setNewSchoolTerm({ academicYear: '', autumnStart: '', autumnEnd: '', autumnHalfTermStart: '', autumnHalfTermEnd: '', springStart: '', springEnd: '', springHalfTermStart: '', springHalfTermEnd: '', summerStart: '', summerEnd: '', summerHalfTermStart: '', summerHalfTermEnd: '' });
+    try {
+      const year = newSchoolTerm.autumnStart.substring(0, 4);
+      const label = newSchoolTerm.academicYear || `${year}-${Number(year) + 1}`;
+      await supabaseApi.schoolTermsApi.addSchoolTerm({ ...newSchoolTerm, academicYear: label }, user.organization);
+      addNotification("School term added");
+      setNewSchoolTerm({ academicYear: '', autumnStart: '', autumnEnd: '', autumnHalfTermStart: '', autumnHalfTermEnd: '', springStart: '', springEnd: '', springHalfTermStart: '', springHalfTermEnd: '', summerStart: '', summerEnd: '', summerHalfTermStart: '', summerHalfTermEnd: '' });
+    } catch (error) {
+      console.error('Error adding school term:', error);
+      addNotification("Error adding school term");
+    }
   };
 
   const deleteSchoolTerm = async (id) => {
     if (confirm("Delete this school year's term dates?")) {
-      await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'schoolTerms', id));
-      addNotification("School term deleted");
+      try {
+        await supabaseApi.schoolTermsApi.deleteSchoolTerm(id, user.organization);
+        addNotification("School term deleted");
+      } catch (error) {
+        console.error('Error deleting school term:', error);
+        addNotification("Error deleting school term");
+      }
     }
   };
 
   const importBankHolidays = async () => {
     if (!confirm("Import UK Holidays?")) return;
-    const hols = generateUKBankHolidays(2025).concat(generateUKBankHolidays(2026));
-    const batch = writeBatch(db);
-    hols.forEach(h => batch.set(doc(subCol('termDates')), h));
-    await batch.commit();
-    addNotification("Holidays Imported");
+    try {
+      const hols = generateUKBankHolidays(2025).concat(generateUKBankHolidays(2026));
+      await supabaseApi.termDatesApi.importBankHolidays(hols, user.organization);
+      addNotification("Holidays Imported");
+    } catch (error) {
+      console.error('Error importing holidays:', error);
+      addNotification("Error importing holidays");
+    }
   };
 
   const postAnnouncement = async (e) => {
     e.preventDefault();
     if (!newAnnouncement.message) return;
-    await addDoc(subCol('announcements'), { ...newAnnouncement, date: new Date().toISOString() });
-    addNotification("Posted");
-    setNewAnnouncement({ message: '', expiry: '' });
+    try {
+      await supabaseApi.announcementsApi.addAnnouncement(
+        newAnnouncement.message,
+        newAnnouncement.expiry,
+        user.organization
+      );
+      addNotification("Posted");
+      setNewAnnouncement({ message: '', expiry: '' });
+    } catch (error) {
+      console.error('Error posting announcement:', error);
+      addNotification("Error posting announcement");
+    }
   };
 
   const deleteAnnouncement = async (id) => {
     if (confirm("Delete?")) {
-      await deleteDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'announcements', id));
+      try {
+        await supabaseApi.announcementsApi.deleteAnnouncement(id, user.organization);
+      } catch (error) {
+        console.error('Error deleting announcement:', error);
+        addNotification("Error deleting announcement");
+      }
     }
   };
 

@@ -15,6 +15,126 @@ import {
 } from './emailNotifications';
 
 /**
+ * DATABASE FIELD MAPPING
+ * Database uses lowercase, but JavaScript uses camelCase
+ * These functions transform between the two
+ */
+
+const requestFieldMap = {
+  // Database -> JavaScript
+  'employeeemail': 'employeeEmail',
+  'employeename': 'employeeName',
+  'startdate': 'startDate',
+  'enddate': 'endDate',
+  'ishalfday': 'isHalfDay',
+  'hoursworked': 'hoursWorked',
+  'dayscount': 'daysCount',
+  'sickreason': 'sickReason',
+  'approvalsubtype': 'approvalSubType',
+  'submittedat': 'submittedAt',
+  'importedsilently': 'importedSilently',
+  'organization_id': 'organization_id',
+  'createdat': 'createdAt'
+};
+
+const staffFieldMap = {
+  'istermtime': 'isTermTime',
+  'termtimedaystarget': 'termTimeDaysTarget',
+  'workingdays': 'workingDays',
+  'hoursperday': 'hoursPerDay',
+  'approveremail': 'approverEmail',
+  'isarchived': 'isArchived',
+  'carryforwarddays': 'carryForwardDays',
+  'organization_id': 'organization_id',
+  'createdat': 'createdAt'
+};
+
+const settingsFieldMap = {
+  'defaultallowance': 'defaultAllowance',
+  'maxcarryforwarddays': 'maxCarryForwardDays',
+  'carryforwardenabled': 'carryForwardEnabled',
+  'holidayyearstartmonth': 'holidayYearStartMonth',
+  'holidayyearstartday': 'holidayYearStartDay',
+  'termtimedaystarget': 'termTimeDaysTarget',
+  'hoursperday': 'hoursPerDay',
+  'lastyearresetdate': 'lastYearResetDate',
+  'lastyearresetclosingdate': 'lastYearResetClosingDate',
+  'organization_id': 'organization_id',
+  'created_at': 'createdAt',
+  'updated_at': 'updatedAt'
+};
+
+const schoolTermsFieldMap = {
+  'academicyear': 'academicYear',
+  'autumnstart': 'autumnStart',
+  'autumnend': 'autumnEnd',
+  'autumnhalftermstart': 'autumnHalfTermStart',
+  'autumnhalftermend': 'autumnHalfTermEnd',
+  'springstart': 'springStart',
+  'springend': 'springEnd',
+  'springhalftermstart': 'springHalfTermStart',
+  'springhalftermend': 'springHalfTermEnd',
+  'summerstart': 'summerStart',
+  'summerend': 'summerEnd',
+  'summerhalftermstart': 'summerHalfTermStart',
+  'summerhalftermend': 'summerHalfTermEnd',
+  'organization_id': 'organization_id',
+  'createdat': 'createdAt'
+};
+
+/**
+ * Transform database row to JavaScript object
+ */
+const transformRow = (row, fieldMap) => {
+  if (!row) return null;
+  const transformed = {};
+
+  // Map known fields
+  Object.entries(fieldMap).forEach(([dbField, jsField]) => {
+    if (dbField in row) {
+      transformed[jsField] = row[dbField];
+    }
+  });
+
+  // Keep any unmapped fields as-is (for flexibility)
+  Object.keys(row).forEach(key => {
+    if (!Object.values(fieldMap).includes(key) && !(key in transformed)) {
+      transformed[key] = row[key];
+    }
+  });
+
+  return transformed;
+};
+
+/**
+ * Transform array of database rows
+ */
+const transformRows = (rows, fieldMap) => {
+  return rows.map(row => transformRow(row, fieldMap));
+};
+
+/**
+ * Convert JavaScript object to database format
+ */
+const toDbFormat = (obj, fieldMap) => {
+  if (!obj) return null;
+  const dbObj = {};
+
+  // Reverse map
+  const reverseMap = {};
+  Object.entries(fieldMap).forEach(([dbField, jsField]) => {
+    reverseMap[jsField] = dbField;
+  });
+
+  Object.entries(obj).forEach(([key, value]) => {
+    const dbField = reverseMap[key] || key;
+    dbObj[dbField] = value;
+  });
+
+  return dbObj;
+};
+
+/**
  * REQUESTS OPERATIONS
  */
 
@@ -28,11 +148,11 @@ export const requestsApi = {
         .from('mt_requests')
         .select('*')
         .eq('organization_id', organizationId)
-        .eq('employeeEmail', email)
-        .order('submittedAt', { ascending: false });
+        .eq('employeeemail', email)
+        .order('submittedat', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      return transformRows(data || [], requestFieldMap);
     } catch (error) {
       console.error('❌ Error fetching user requests:', error);
       throw error;
@@ -48,10 +168,10 @@ export const requestsApi = {
         .from('mt_requests')
         .select('*')
         .eq('organization_id', organizationId)
-        .order('submittedAt', { ascending: false });
+        .order('submittedat', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      return transformRows(data || [], requestFieldMap);
     } catch (error) {
       console.error('❌ Error fetching all requests:', error);
       throw error;
@@ -70,14 +190,17 @@ export const requestsApi = {
         submittedAt: new Date().toISOString()
       };
 
+      // Convert to database format
+      const dbRequest = toDbFormat(newRequest, requestFieldMap);
+
       const { data, error } = await supabase
         .from('mt_requests')
-        .insert([newRequest])
+        .insert([dbRequest])
         .select();
 
       if (error) throw error;
       console.log(`✅ Request submitted for ${formData.employeeName}`);
-      return data?.[0];
+      return transformRow(data?.[0], requestFieldMap);
     } catch (error) {
       console.error('❌ Error submitting request:', error);
       throw error;
@@ -220,7 +343,7 @@ export const staffApi = {
         .order('name', { ascending: true });
 
       if (error) throw error;
-      return data || [];
+      return transformRows(data || [], staffFieldMap);
     } catch (error) {
       console.error('❌ Error fetching staff list:', error);
       throw error;
@@ -237,14 +360,17 @@ export const staffApi = {
         organization_id: organizationId
       };
 
+      // Convert to database format
+      const dbStaff = toDbFormat(newStaff, staffFieldMap);
+
       const { data, error } = await supabase
         .from('mt_staff')
-        .insert([newStaff])
+        .insert([dbStaff])
         .select();
 
       if (error) throw error;
       console.log(`✅ Staff member added: ${staffData.name}`);
-      return data?.[0];
+      return transformRow(data?.[0], staffFieldMap);
     } catch (error) {
       console.error('❌ Error adding staff:', error);
       throw error;
@@ -256,16 +382,19 @@ export const staffApi = {
    */
   updateStaff: async (staffId, updates, organizationId) => {
     try {
+      // Convert to database format
+      const dbUpdates = toDbFormat(updates, staffFieldMap);
+
       const { data, error } = await supabase
         .from('mt_staff')
-        .update(updates)
+        .update(dbUpdates)
         .eq('id', staffId)
         .eq('organization_id', organizationId)
         .select();
 
       if (error) throw error;
       console.log(`✅ Staff member updated: ${staffId}`);
-      return data?.[0];
+      return transformRow(data?.[0], staffFieldMap);
     } catch (error) {
       console.error('❌ Error updating staff:', error);
       throw error;
@@ -397,7 +526,7 @@ export const termDatesApi = {
   getTermDates: async (organizationId) => {
     try {
       const { data, error } = await supabase
-        .from('mt_termDates')
+        .from('mt_termdates')
         .select('*')
         .eq('organization_id', organizationId)
         .order('date', { ascending: true });
@@ -416,7 +545,7 @@ export const termDatesApi = {
   addTermDate: async (dateData, organizationId) => {
     try {
       const { data, error } = await supabase
-        .from('mt_termDates')
+        .from('mt_termdates')
         .insert([{ ...dateData, organization_id: organizationId }])
         .select();
 
@@ -435,7 +564,7 @@ export const termDatesApi = {
   deleteTermDate: async (dateId, organizationId) => {
     try {
       const { error } = await supabase
-        .from('mt_termDates')
+        .from('mt_termdates')
         .delete()
         .eq('id', dateId)
         .eq('organization_id', organizationId);
@@ -461,7 +590,7 @@ export const termDatesApi = {
       }));
 
       const { error } = await supabase
-        .from('mt_termDates')
+        .from('mt_termdates')
         .insert(holidayRecords);
 
       if (error) throw error;
@@ -484,13 +613,13 @@ export const schoolTermsApi = {
   getSchoolTerms: async (organizationId) => {
     try {
       const { data, error } = await supabase
-        .from('mt_schoolTerms')
+        .from('mt_schoolterms')
         .select('*')
         .eq('organization_id', organizationId)
-        .order('academicYear', { ascending: false });
+        .order('academicyear', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      return transformRows(data || [], schoolTermsFieldMap);
     } catch (error) {
       console.error('❌ Error fetching school terms:', error);
       throw error;
@@ -502,14 +631,17 @@ export const schoolTermsApi = {
    */
   addSchoolTerm: async (termData, organizationId) => {
     try {
+      // Convert to database format
+      const dbTermData = toDbFormat(termData, schoolTermsFieldMap);
+
       const { data, error } = await supabase
-        .from('mt_schoolTerms')
-        .insert([{ ...termData, organization_id: organizationId }])
+        .from('mt_schoolterms')
+        .insert([{ ...dbTermData, organization_id: organizationId }])
         .select();
 
       if (error) throw error;
       console.log(`✅ School term added: ${termData.academicYear}`);
-      return data?.[0];
+      return transformRow(data?.[0], schoolTermsFieldMap);
     } catch (error) {
       console.error('❌ Error adding school term:', error);
       throw error;
@@ -522,7 +654,7 @@ export const schoolTermsApi = {
   deleteSchoolTerm: async (termId, organizationId) => {
     try {
       const { error } = await supabase
-        .from('mt_schoolTerms')
+        .from('mt_schoolterms')
         .delete()
         .eq('id', termId)
         .eq('organization_id', organizationId);
@@ -634,7 +766,7 @@ export const settingsApi = {
       }
 
       if (error) throw error;
-      return data;
+      return transformRow(data, settingsFieldMap);
     } catch (error) {
       console.error('❌ Error fetching settings:', error);
       throw error;
@@ -646,6 +778,9 @@ export const settingsApi = {
    */
   updateSettings: async (updates, organizationId) => {
     try {
+      // Convert to database format
+      const dbUpdates = toDbFormat(updates, settingsFieldMap);
+
       // First try to update
       const { data: existing } = await supabase
         .from('mt_settings')
@@ -657,23 +792,23 @@ export const settingsApi = {
         // Update existing
         const { data, error } = await supabase
           .from('mt_settings')
-          .update(updates)
+          .update(dbUpdates)
           .eq('organization_id', organizationId)
           .select();
 
         if (error) throw error;
         console.log(`✅ Settings updated for ${organizationId}`);
-        return data?.[0];
+        return transformRow(data?.[0], settingsFieldMap);
       } else {
         // Create new
         const { data, error } = await supabase
           .from('mt_settings')
-          .insert([{ ...updates, organization_id: organizationId }])
+          .insert([{ ...dbUpdates, organization_id: organizationId }])
           .select();
 
         if (error) throw error;
         console.log(`✅ Settings created for ${organizationId}`);
-        return data?.[0];
+        return transformRow(data?.[0], settingsFieldMap);
       }
     } catch (error) {
       console.error('❌ Error updating settings:', error);
@@ -736,7 +871,7 @@ export const setupRealtimeListeners = (organizationId, callbacks) => {
 
   // Term dates listener
   if (callbacks.onTermDatesChange) {
-    subscriptions.push(createRealtimeListener('mt_termDates', organizationId, callbacks.onTermDatesChange));
+    subscriptions.push(createRealtimeListener('mt_termdates', organizationId, callbacks.onTermDatesChange));
   }
 
   return subscriptions;
