@@ -1,9 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { db } from './firebase.js';
-import {
-  collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc,
-  query, where, getDocs, writeBatch, setDoc
-} from 'firebase/firestore';
 import { Megaphone, Maximize2, Minimize2 } from 'lucide-react';
 import { logoutEntra } from './services/entraAuth';
 
@@ -12,6 +7,12 @@ import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail }
 import { useAuth } from './services/auth.js';
 import { api } from './services/api.js';
 import { supabase } from './supabase.js';
+import * as supabaseApi from './services/supabaseApi.js';
+import {
+  sendApprovalNotification,
+  sendRejectionNotification,
+  sendSubmissionNotification
+} from './services/emailNotifications.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { OrganizationProvider } from './contexts/OrganizationContext.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
@@ -23,8 +24,6 @@ import AdminView from './components/views/AdminView.jsx';
 import CalendarView from './components/views/CalendarView.jsx';
 import AnalyticsView from './components/views/AnalyticsView.jsx';
 import OnboardingAdmin from './components/OnboardingAdmin.jsx';
-
-const subCol = (name) => collection(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', name);
 
 const INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
 const WARNING_BEFORE_MS = 60 * 1000;
@@ -139,44 +138,120 @@ const App = () => {
   }, [authUser, authLoading]);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubStaff = onSnapshot(subCol('staff'), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setStaffList(list);
-      const profile = list.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
-      const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
-      if (isSuper) setMyRole('Admin');
-      else if (profile) setMyRole(profile.role);
-      else setMyRole('Staff');
-      if (profile) {
-        setMyDept(profile.department || '');
-        setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
-        setAmITermTime(profile.isTermTime || false);
-        setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
-        if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
-        else setFormData(p => ({ ...p, type: 'Annual Leave' }));
+    if (!user || !user.organization) return;
+
+    const orgId = user.organization;
+    const subscriptions = [];
+    let isUnmounting = false;
+
+    (async () => {
+      try {
+        // Load initial data
+        console.log(`📊 Loading data for organization: ${orgId}`);
+
+        // Load staff
+        const staffList = await supabaseApi.staffApi.getStaffList(orgId);
+        if (!isUnmounting) {
+          const sortedStaff = staffList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          setStaffList(sortedStaff);
+
+          const profile = sortedStaff.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
+          const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
+          if (isSuper) setMyRole('Admin');
+          else if (profile) setMyRole(profile.role);
+          else setMyRole('Staff');
+
+          if (profile) {
+            setMyDept(profile.department || '');
+            setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
+            setAmITermTime(profile.isTermTime || false);
+            setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
+            if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
+            else setFormData(p => ({ ...p, type: 'Annual Leave' }));
+          }
+        }
+
+        // Load requests
+        const requestsList = await supabaseApi.requestsApi.getAllRequests(orgId);
+        if (!isUnmounting) {
+          setRequests(requestsList.sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')));
+        }
+
+        // Load departments
+        const deptsList = await supabaseApi.departmentsApi.getDepartments(orgId);
+        if (!isUnmounting) {
+          const custom = deptsList.map(d => d.name);
+          setDepartments([...new Set([...CONFIG.defaultDepartments, ...custom])].sort());
+        }
+
+        // Load term dates
+        const termDatesList = await supabaseApi.termDatesApi.getTermDates(orgId);
+        if (!isUnmounting) {
+          setTermDates(termDatesList);
+        }
+
+        // Load school terms
+        const schoolTermsList = await supabaseApi.schoolTermsApi.getSchoolTerms(orgId);
+        if (!isUnmounting) {
+          setSchoolTerms(schoolTermsList.sort((a, b) => (a.academicYear || '').localeCompare(b.academicYear || '')));
+        }
+
+        // Load announcements
+        const announcementsList = await supabaseApi.announcementsApi.getAnnouncements(orgId);
+        if (!isUnmounting) {
+          setAnnouncements(announcementsList);
+        }
+
+        // Load settings
+        const settings = await supabaseApi.settingsApi.getSettings(orgId);
+        if (!isUnmounting) {
+          setSystemSettings(prev => ({ ...prev, ...settings }));
+        }
+
+        setIsLoading(false);
+        console.log(`✅ Data loaded for ${orgId}`);
+
+        // Setup real-time listeners
+        if (!isUnmounting) {
+          const realtimeSubs = supabaseApi.setupRealtimeListeners(orgId, {
+            onStaffChange: async () => {
+              const updated = await supabaseApi.staffApi.getStaffList(orgId);
+              if (!isUnmounting) {
+                setStaffList(updated.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+              }
+            },
+            onRequestsChange: async () => {
+              const updated = await supabaseApi.requestsApi.getAllRequests(orgId);
+              if (!isUnmounting) {
+                setRequests(updated.sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')));
+              }
+            },
+            onDepartmentsChange: async () => {
+              const updated = await supabaseApi.departmentsApi.getDepartments(orgId);
+              if (!isUnmounting) {
+                const custom = updated.map(d => d.name);
+                setDepartments([...new Set([...CONFIG.defaultDepartments, ...custom])].sort());
+              }
+            },
+            onTermDatesChange: async () => {
+              const updated = await supabaseApi.termDatesApi.getTermDates(orgId);
+              if (!isUnmounting) {
+                setTermDates(updated);
+              }
+            }
+          });
+          subscriptions.push(...realtimeSubs);
+        }
+      } catch (error) {
+        console.error('❌ Error loading organization data:', error);
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    }, (err) => { console.error(err); setIsLoading(false); });
+    })();
 
-    const unsubReqs = onSnapshot(subCol('requests'), (snap) => {
-      setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')));
-    });
-
-    const unsubDepts = onSnapshot(subCol('departments'), (snap) => {
-      const custom = snap.docs.map(d => d.data().name);
-      setDepartments([...new Set([...CONFIG.defaultDepartments, ...custom])].sort());
-    });
-
-    const unsubDates = onSnapshot(subCol('termDates'), (snap) => setTermDates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubSchoolTerms = onSnapshot(subCol('schoolTerms'), (snap) => setSchoolTerms(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.academicYear || '').localeCompare(b.academicYear || ''))));
-    const unsubAnnounce = onSnapshot(subCol('announcements'), (snap) => setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubSettings = onSnapshot(
-      doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'settings', 'global'),
-      (snap) => { if (snap.exists()) setSystemSettings(prev => ({ ...prev, ...snap.data() })); }
-    );
-
-    return () => { unsubStaff(); unsubReqs(); unsubDepts(); unsubDates(); unsubSchoolTerms(); unsubAnnounce(); unsubSettings(); };
+    return () => {
+      isUnmounting = true;
+      supabaseApi.cleanupRealtimeListeners(subscriptions);
+    };
   }, [user]);
 
   const addNotification = (msg) => {
@@ -472,18 +547,47 @@ const App = () => {
     );
   };
 
-  const handleApproval = async (id, status, approvalSubType = null) => {
-    const reqForApproval = requests.find(r => r.id === id);
-    if (status === 'Approved' && reqForApproval?.type === CONFIG.toiLeaveType && !approvalSubType) {
-      approvalSubType = 'TOIL';
-    }
-    const updateData = { status };
-    if (approvalSubType) updateData.approvalSubType = approvalSubType;
-    await updateDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'requests', id), updateData);
-    setPendingApprovalId(null);
-    addNotification(`Request ${status}`);
-    const req = requests.find(r => r.id === id);
-    if (req) {
+  const handleApproval = async (id, status, approvalSubType = null, rejectionReason = null) => {
+    try {
+      const reqForApproval = requests.find(r => r.id === id);
+      if (!reqForApproval) {
+        console.error('Request not found:', id);
+        return;
+      }
+
+      if (status === 'Approved' && reqForApproval?.type === CONFIG.toiLeaveType && !approvalSubType) {
+        approvalSubType = 'TOIL';
+      }
+
+      // Update in Supabase
+      if (status === 'Approved') {
+        await supabaseApi.requestsApi.approveRequest(
+          id,
+          approvalSubType,
+          user.organization,
+          user.azureToken,
+          reqForApproval.employeeEmail,
+          reqForApproval.employeeName,
+          reqForApproval.type
+        );
+      } else if (status === 'Rejected') {
+        await supabaseApi.requestsApi.rejectRequest(
+          id,
+          rejectionReason || 'Request not approved',
+          user.organization,
+          user.azureToken,
+          reqForApproval.employeeEmail,
+          reqForApproval.employeeName,
+          reqForApproval.type
+        );
+      }
+
+      setPendingApprovalId(null);
+      const emailSent = user.azureToken ? ' & email sent' : '';
+      addNotification(`Request ${status}${emailSent}`);
+
+      // Calculate balance for display (legacy logic kept for backwards compatibility)
+      const req = reqForApproval;
       const color = status === 'Approved' ? '#047857' : '#b91c1c';
       const emoji = status === 'Approved' ? '✅' : '❌';
 
@@ -515,46 +619,11 @@ const App = () => {
         }
       }
 
-      if (!isEmailArchived(req.employeeEmail)) {
-        await sendEmail(graphToken, [req.employeeEmail],
-          `Your Leave Request has been ${status}`,
-          `${emoji} Leave Request ${status}`,
-          color,
-          [
-            { label: 'Employee', value: req.employeeName },
-            { label: 'Leave Type', value: req.type },
-            ...(approvalLabel ? [{ label: 'Approval Type', value: approvalLabel }] : []),
-            { label: 'Start Date', value: formatDateUK(req.startDate) },
-            { label: 'End Date', value: formatDateUK(req.endDate) },
-            { label: 'Days', value: `${req.daysCount} day(s)` },
-            { label: 'Status', value: status },
-            ...empBalanceRows
-          ],
-          status === 'Approved'
-            ? 'Your leave has been approved. Please ensure your work is covered during your absence.'
-            : 'Your leave request was not approved. Please speak to your manager for more information.'
-        );
-      }
-
-      const deptRecipients = getNotificationRecipients(req.department);
-      await sendEmail(graphToken, deptRecipients,
-        `Leave ${status}: ${req.employeeName}`,
-        `${emoji} Leave Request ${status}`,
-        color,
-        [
-          { label: 'Employee', value: req.employeeName },
-          { label: 'Department', value: req.department },
-          { label: 'Leave Type', value: req.type },
-          ...(approvalLabel ? [{ label: 'Approval Type', value: approvalLabel }] : []),
-          { label: 'Start Date', value: formatDateUK(req.startDate) },
-          { label: 'End Date', value: formatDateUK(req.endDate) },
-          { label: 'Days', value: `${req.daysCount} day(s)` },
-          { label: 'Decision By', value: user.displayName },
-          { label: 'Status', value: status },
-          ...empBalanceRows
-        ],
-        'This is a record of the leave decision made in the GSG HR Portal.'
-      );
+      // Log the approval for audit trail
+      console.log(`✅ Request ${status}: ${req.employeeName} (${req.type}) - Email: ${user.azureToken ? 'sent' : 'no token'}`);
+    } catch (error) {
+      console.error('❌ Error processing approval:', error);
+      addNotification(`Error: ${error.message}`);
     }
   };
 
