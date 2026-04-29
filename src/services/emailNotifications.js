@@ -35,9 +35,10 @@ export const sendNotificationEmail = async (
     }
 
     // Fetch organization config from Supabase
+    // Note: Supabase returns column names in lowercase
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .select('notificationEmail, useGraphApi')
+      .select('notificationemail, usegraphapi')
       .eq('id', organizationId)
       .single();
 
@@ -45,17 +46,17 @@ export const sendNotificationEmail = async (
       throw new Error(`Failed to fetch organization config: ${orgError?.message || 'Not found'}`);
     }
 
-    if (!org.notificationEmail) {
+    if (!org.notificationemail) {
       throw new Error(`Organization ${organizationId} does not have a notification email configured`);
     }
 
     // If Graph API is enabled and we have a token, use it
-    if (org.useGraphApi && azureToken) {
+    if (org.usegraphapi && azureToken) {
       return await sendViaGraphApi(
         toEmail,
         subject,
         htmlBody,
-        org.notificationEmail,
+        org.notificationemail,
         azureToken,
         organizationId
       );

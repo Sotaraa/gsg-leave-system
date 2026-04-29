@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { mock_staff } from '../data/mockdata';
 import * as msal from '@azure/msal-browser';
+import { getEntraUser, getMsalInstance } from './entraAuth';
 
 /**
  * Get organization's Azure AD configuration from Supabase
@@ -11,9 +11,10 @@ import * as msal from '@azure/msal-browser';
  */
 const getOrganizationConfig = async (organizationId) => {
   try {
+    // Note: Supabase returns column names in lowercase
     const { data: org, error } = await supabase
       .from('organizations')
-      .select('id, name, azureClientId, azureTenantId, azureRedirectUri, ssoConfigured')
+      .select('id, name, azureclientid, azuretenantid, azureredirecturi, ssoconfigured')
       .eq('id', organizationId)
       .single();
 
@@ -21,15 +22,15 @@ const getOrganizationConfig = async (organizationId) => {
       throw new Error(`Organization ${organizationId} not found`);
     }
 
-    if (!org.ssoConfigured || !org.azureClientId || !org.azureTenantId) {
+    if (!org.ssoconfigured || !org.azureclientid || !org.azuretenantid) {
       console.warn(`⚠️ Azure AD SSO not fully configured for ${org.name}`);
     }
 
     return {
       auth: {
-        clientId: org.azureClientId,
-        authority: `https://login.microsoftonline.com/${org.azureTenantId}`,
-        redirectUri: org.azureRedirectUri
+        clientId: org.azureclientid,
+        authority: `https://login.microsoftonline.com/${org.azuretenantid}`,
+        redirectUri: org.azureredirecturi
       },
       org: org
     };
@@ -140,15 +141,11 @@ const ensureUserProfile = async (email, organizationId, role = 'Staff') => {
  * Multi-tenant authentication hook
  *
  * Routing logic:
- * 1. Extract email domain from user email
- * 2. Check Supabase organizations table for domain match
- * 3. If found → Load user from Supabase mt_staff table (dataSource: 'supabase')
- * 4. If not found → Fall back to Firebase lookup (dataSource: 'firebase')
- *
- * RLS enforcement:
- * - All new Supabase users are added to user_profiles table on first login
- * - user_profiles links auth.users to organizations
- * - RLS policies use user_profiles to enforce organization_id filtering
+ * 1. Verify auth method is 'entra' and MSAL holds a valid session
+ * 2. Extract email domain from user email
+ * 3. Check Supabase organizations table for domain match
+ * 4. If found → Load user from Supabase mt_staff table (dataSource: 'supabase')
+ * 5. If not found → deny access
  */
 export const useAuth = () => {
   const [user, setUser] = useState(null);
@@ -164,6 +161,43 @@ export const useAuth = () => {
         const storedName = localStorage.getItem('GSG_USER_NAME');
 
         if (storedEmail) {
+          // ─── SECURITY ENFORCEMENT ────────────────────────────────────────
+          // Only allow sessions that were authenticated via Microsoft (Entra).
+          // Email-only sessions (method !== 'entra') are no longer permitted —
+          // anyone could write an email to localStorage and gain access.
+          if (method !== 'entra') {
+            console.warn('🚫 Session rejected: only Microsoft (Entra) authentication is allowed.');
+            localStorage.removeItem('GSG_USER_EMAIL');
+            localStorage.removeItem('GSG_USER_NAME');
+            localStorage.removeItem('GSG_AUTH_METHOD');
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+
+          // Verify MSAL still holds a valid account matching the stored email.
+          // This prevents someone from manually writing an email into localStorage.
+          const msalUser = getEntraUser();
+          if (!msalUser) {
+            console.warn('🚫 Session rejected: no active Microsoft session found in MSAL cache.');
+            localStorage.removeItem('GSG_USER_EMAIL');
+            localStorage.removeItem('GSG_USER_NAME');
+            localStorage.removeItem('GSG_AUTH_METHOD');
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+
+          if (msalUser.email.toLowerCase() !== storedEmail.toLowerCase()) {
+            console.warn(`🚫 Session rejected: MSAL account (${msalUser.email}) does not match stored email (${storedEmail}).`);
+            localStorage.removeItem('GSG_USER_EMAIL');
+            localStorage.removeItem('GSG_USER_NAME');
+            localStorage.removeItem('GSG_AUTH_METHOD');
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          // ─────────────────────────────────────────────────────────────────
           // Extract email domain for organization lookup
           const emailDomain = '@' + storedEmail.split('@')[1];
           console.log(`🔍 Looking up organization for domain: ${emailDomain}`);
@@ -179,54 +213,37 @@ export const useAuth = () => {
             // Organization found in Supabase - this is a new multi-tenant user
             console.log(`✅ Organization found: ${org.name}`);
 
-            // Step 1.5: Fetch organization's Azure AD config
-            let organizationConfig = null;
-            let msalInstance = null;
+            // Get azure token from the Sotara multi-tenant MSAL instance
+            // (this is the instance that actually authenticated the user)
             let azureToken = null;
-
             try {
-              const { auth: authConfig, org: orgData } = await getOrganizationConfig(org.id);
-              organizationConfig = { auth: authConfig, ...orgData };
-
-              // Initialize MSAL with organization's Azure AD config
-              if (authConfig.clientId && authConfig.redirectUri) {
-                msalInstance = initializeMSAL({ auth: authConfig });
-                console.log(`✅ MSAL initialized for ${org.name}`);
-
-                // Try to get token from MSAL cache
-                try {
-                  const accounts = msalInstance.getAllAccounts();
-                  if (accounts.length > 0) {
-                    const tokenResponse = await msalInstance.acquireTokenSilent({
-                      scopes: ['Mail.Send', 'User.Read'],
-                      account: accounts[0]
-                    });
-                    azureToken = tokenResponse.accessToken;
-                    console.log(`✅ Azure token retrieved for ${org.name}`);
-                  }
-                } catch (tokenError) {
-                  console.warn(`⚠️ No cached token for ${org.name}, user will need to sign in`);
+              const sotataMsal = getMsalInstance();
+              if (sotataMsal) {
+                const accounts = sotataMsal.getAllAccounts();
+                if (accounts.length > 0) {
+                  const tokenResponse = await sotataMsal.acquireTokenSilent({
+                    scopes: ['openid', 'profile', 'email', 'Mail.Send', 'User.Read'],
+                    account: accounts[0]
+                  });
+                  azureToken = tokenResponse.accessToken;
+                  console.log(`✅ Azure token retrieved from Sotara MSAL`);
                 }
               }
-            } catch (configError) {
-              console.warn(`⚠️ Could not load Azure AD config: ${configError.message}`);
-              // Continue with basic user setup even if Azure AD config fails
+            } catch (tokenError) {
+              console.warn(`⚠️ Could not acquire token silently:`, tokenError.message);
             }
 
-            // Step 2: Load user from Supabase mt_staff table
+            // Step 2: Load user from Supabase mt_staff table (case-insensitive email match)
             const { data: staffData, error: staffError } = await supabase
               .from('mt_staff')
               .select('*')
               .eq('organization_id', org.id)
-              .eq('email', storedEmail)
+              .ilike('email', storedEmail)
               .single();
 
             if (staffData && !staffError) {
               // User found in org staff table
               console.log(`✅ User found in organization: ${staffData.name}`);
-
-              // Ensure user is in user_profiles table (RLS enforcement)
-              await ensureUserProfile(storedEmail, org.id, staffData.role);
 
               setUser({
                 uid: staffData.id,
@@ -239,17 +256,12 @@ export const useAuth = () => {
                 organizationName: org.name,
                 dataSource: 'supabase',
                 isOrgAdmin: staffData.role === 'Admin',
-                organizationConfig: organizationConfig,
                 azureToken: azureToken,
-                msalInstance: msalInstance
               });
             } else {
-              // Organization exists but user not in staff table - invite them as new user
+              // Organization exists but user not in staff table
               console.log(`⚠️ Organization found but user not in staff table, using guest mode`);
               const displayName = storedName || storedEmail.split('@')[0];
-
-              // Ensure user is in user_profiles table (RLS enforcement)
-              await ensureUserProfile(storedEmail, org.id, 'Staff');
 
               setUser({
                 uid: storedEmail,
@@ -263,47 +275,16 @@ export const useAuth = () => {
                 dataSource: 'supabase',
                 isGuest: true,
                 isOrgAdmin: false,
-                organizationConfig: organizationConfig,
                 azureToken: azureToken,
-                msalInstance: msalInstance
               });
             }
           } else {
-            // No organization found - check legacy Firebase/GSG requests table
-            console.log(`ℹ️ No Supabase organization found, checking legacy GSG records`);
-
-            // SECURITY: Only allow access if email exists in legacy requests table
-            // This prevents random emails from gaining access to any organization
-            const { data: requests, error } = await supabase
-              .from('requests')
-              .select('employeename, employeeemail, department')
-              .eq('employeeemail', storedEmail)
-              .limit(1);
-
-            if (requests && requests.length > 0) {
-              // ✅ Known legacy GSG user - allow access
-              const userData = requests[0];
-              console.log(`✅ Legacy GSG user found: ${userData.employeename}`);
-              setUser({
-                uid: userData.employeeemail,
-                displayName: userData.employeename,
-                email: userData.employeeemail,
-                department: userData.department || '',
-                role: 'Staff',
-                allowance: 25,
-                organization: 'gardener-schools',
-                organizationName: 'Gardener Schools Group',
-                dataSource: 'firebase'
-              });
-            } else {
-              // 🚫 SECURITY: Unknown email - deny access completely
-              // User must belong to a known organization or be a legacy GSG user
-              console.warn(`🚫 Access denied: ${storedEmail} does not belong to any organization`);
-              localStorage.removeItem('GSG_USER_EMAIL');
-              localStorage.removeItem('GSG_USER_ORGANIZATION_ID');
-              localStorage.removeItem('GSG_AUTH_METHOD');
-              setUser(null);
-            }
+            // Email domain not found in any organization — deny access
+            console.warn(`🚫 Access denied: domain not recognised for ${storedEmail}`);
+            localStorage.removeItem('GSG_USER_EMAIL');
+            localStorage.removeItem('GSG_USER_NAME');
+            localStorage.removeItem('GSG_AUTH_METHOD');
+            setUser(null);
           }
 
           setAuthMethod(method);

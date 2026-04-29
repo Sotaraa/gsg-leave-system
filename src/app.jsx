@@ -5,8 +5,6 @@ import { logoutEntra } from './services/entraAuth';
 import CONFIG from './config.js';
 import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail } from './utils/helpers.js';
 import { useAuth } from './services/auth.js';
-import { api } from './services/api.js';
-import { supabase } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
 import {
   sendApprovalNotification,
@@ -132,6 +130,10 @@ const App = () => {
 
   useEffect(() => {
     setUser(authUser);
+    // Wire up the Graph API token so email notifications work in all send paths
+    if (authUser?.azureToken) {
+      setGraphToken(authUser.azureToken);
+    }
     if (!authLoading) {
       setIsLoading(false);
     }
