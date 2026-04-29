@@ -13,6 +13,7 @@ import { useAuth } from './services/auth.js';
 import { api } from './services/api.js';
 import { supabase } from './supabase.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { OrganizationProvider } from './contexts/OrganizationContext.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import Notifications from './components/Notifications.jsx';
@@ -940,7 +941,8 @@ const App = () => {
 
   return (
     <ErrorBoundary>
-      <div className="app-container">
+      <OrganizationProvider user={user}>
+        <div className="app-container">
 
         {showInactivityWarning && (
           <div style={{
@@ -1094,6 +1096,7 @@ const App = () => {
           </>
         )}
       </div>
+      </OrganizationProvider>
     </ErrorBoundary>
   );
 };

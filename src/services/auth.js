@@ -3,6 +3,68 @@ import { supabase } from '../supabase';
 import { mock_staff } from '../data/mockdata';
 
 /**
+ * Ensure user exists in user_profiles table for RLS enforcement
+ * Called on first login to link auth.users to organizations
+ *
+ * @param {string} email - User email
+ * @param {string} organizationId - Organization ID
+ * @param {string} role - User role (Staff, Admin, Dept Head, Super Admin)
+ */
+const ensureUserProfile = async (email, organizationId, role = 'Staff') => {
+  try {
+    // Get current auth user
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
+    if (!authUser) {
+      console.warn('⚠️ No authenticated user found, skipping user_profiles sync');
+      return;
+    }
+
+    // Check if profile already exists
+    const { data: existingProfile, error: checkError } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('auth_user_id', authUser.id)
+      .single();
+
+    if (existingProfile) {
+      console.log('✅ User profile already exists');
+      return;
+    }
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      // PGRST116 = "no rows returned" which is expected for new users
+      console.error('Error checking user profile:', checkError);
+      return;
+    }
+
+    // Create new user profile
+    const { data: newProfile, error: insertError } = await supabase
+      .from('user_profiles')
+      .insert({
+        auth_user_id: authUser.id,
+        organization_id: organizationId,
+        email: email,
+        full_name: authUser.user_metadata?.name || email.split('@')[0],
+        role: role,
+        is_super_admin: email?.toLowerCase() === 'info@sotara.co.uk',
+        is_organization_admin: role === 'Admin'
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('❌ Error creating user profile:', insertError);
+      return;
+    }
+
+    console.log(`✅ User profile created for ${email} in organization ${organizationId}`);
+  } catch (error) {
+    console.error('Error in ensureUserProfile:', error);
+  }
+};
+
+/**
  * Multi-tenant authentication hook
  *
  * Routing logic:
@@ -10,6 +72,11 @@ import { mock_staff } from '../data/mockdata';
  * 2. Check Supabase organizations table for domain match
  * 3. If found → Load user from Supabase mt_staff table (dataSource: 'supabase')
  * 4. If not found → Fall back to Firebase lookup (dataSource: 'firebase')
+ *
+ * RLS enforcement:
+ * - All new Supabase users are added to user_profiles table on first login
+ * - user_profiles links auth.users to organizations
+ * - RLS policies use user_profiles to enforce organization_id filtering
  */
 export const useAuth = () => {
   const [user, setUser] = useState(null);
@@ -51,6 +118,10 @@ export const useAuth = () => {
             if (staffData && !staffError) {
               // User found in org staff table
               console.log(`✅ User found in organization: ${staffData.name}`);
+
+              // Ensure user is in user_profiles table (RLS enforcement)
+              await ensureUserProfile(storedEmail, org.id, staffData.role);
+
               setUser({
                 uid: staffData.id,
                 displayName: staffData.name,
@@ -60,12 +131,17 @@ export const useAuth = () => {
                 allowance: staffData.allowance || 25,
                 organization: org.id,
                 organizationName: org.name,
-                dataSource: 'supabase'
+                dataSource: 'supabase',
+                isOrgAdmin: staffData.role === 'Admin'
               });
             } else {
               // Organization exists but user not in staff table - invite them as new user
               console.log(`⚠️ Organization found but user not in staff table, using guest mode`);
               const displayName = storedName || storedEmail.split('@')[0];
+
+              // Ensure user is in user_profiles table (RLS enforcement)
+              await ensureUserProfile(storedEmail, org.id, 'Staff');
+
               setUser({
                 uid: storedEmail,
                 displayName: displayName,
@@ -76,7 +152,8 @@ export const useAuth = () => {
                 organization: org.id,
                 organizationName: org.name,
                 dataSource: 'supabase',
-                isGuest: true
+                isGuest: true,
+                isOrgAdmin: false
               });
             }
           } else {
