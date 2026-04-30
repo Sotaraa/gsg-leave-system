@@ -162,11 +162,12 @@ export const useAuth = () => {
 
         if (storedEmail) {
           // ─── SECURITY ENFORCEMENT ────────────────────────────────────────
-          // Only allow sessions that were authenticated via Microsoft (Entra).
-          // Email-only sessions (method !== 'entra') are no longer permitted —
-          // anyone could write an email to localStorage and gain access.
-          if (method !== 'entra') {
-            console.warn('🚫 Session rejected: only Microsoft (Entra) authentication is allowed.');
+          // Allow local email login ONLY for Sotara admins (@sotara.co.uk)
+          // For all other domains, require Microsoft (Entra) authentication.
+          const isSotaraEmail = storedEmail.toLowerCase().endsWith('@sotara.co.uk');
+
+          if (method === 'email' && !isSotaraEmail) {
+            console.warn('🚫 Session rejected: only Sotara admins can use email login. Others require Microsoft (Entra) authentication.');
             localStorage.removeItem('GSG_USER_EMAIL');
             localStorage.removeItem('GSG_USER_NAME');
             localStorage.removeItem('GSG_AUTH_METHOD');
@@ -175,30 +176,68 @@ export const useAuth = () => {
             return;
           }
 
-          // Verify MSAL still holds a valid account matching the stored email.
+          // For non-Sotara emails, require Microsoft authentication
+          if (method !== 'entra' && !isSotaraEmail) {
+            console.warn('🚫 Session rejected: only Microsoft (Entra) authentication is allowed for non-Sotara domains.');
+            localStorage.removeItem('GSG_USER_EMAIL');
+            localStorage.removeItem('GSG_USER_NAME');
+            localStorage.removeItem('GSG_AUTH_METHOD');
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+
+          // For non-Sotara emails, verify MSAL still holds a valid account.
           // This prevents someone from manually writing an email into localStorage.
-          const msalUser = getEntraUser();
-          if (!msalUser) {
-            console.warn('🚫 Session rejected: no active Microsoft session found in MSAL cache.');
-            localStorage.removeItem('GSG_USER_EMAIL');
-            localStorage.removeItem('GSG_USER_NAME');
-            localStorage.removeItem('GSG_AUTH_METHOD');
-            setUser(null);
-            setLoading(false);
-            return;
-          }
+          if (!isSotaraEmail) {
+            const msalUser = getEntraUser();
+            if (!msalUser) {
+              console.warn('🚫 Session rejected: no active Microsoft session found in MSAL cache.');
+              localStorage.removeItem('GSG_USER_EMAIL');
+              localStorage.removeItem('GSG_USER_NAME');
+              localStorage.removeItem('GSG_AUTH_METHOD');
+              setUser(null);
+              setLoading(false);
+              return;
+            }
 
-          if (msalUser.email.toLowerCase() !== storedEmail.toLowerCase()) {
-            console.warn(`🚫 Session rejected: MSAL account (${msalUser.email}) does not match stored email (${storedEmail}).`);
-            localStorage.removeItem('GSG_USER_EMAIL');
-            localStorage.removeItem('GSG_USER_NAME');
-            localStorage.removeItem('GSG_AUTH_METHOD');
-            setUser(null);
-            setLoading(false);
-            return;
+            if (msalUser.email.toLowerCase() !== storedEmail.toLowerCase()) {
+              console.warn(`🚫 Session rejected: MSAL account (${msalUser.email}) does not match stored email (${storedEmail}).`);
+              localStorage.removeItem('GSG_USER_EMAIL');
+              localStorage.removeItem('GSG_USER_NAME');
+              localStorage.removeItem('GSG_AUTH_METHOD');
+              setUser(null);
+              setLoading(false);
+              return;
+            }
           }
           // ─────────────────────────────────────────────────────────────────
-          // Extract email domain for organization lookup
+          // Special handling for Sotara admins (no organization domain lookup needed)
+          if (isSotaraEmail) {
+            const displayName = storedName || storedEmail.split('@')[0];
+            console.log(`✅ Sotara admin logged in: ${storedEmail}`);
+
+            setUser({
+              uid: storedEmail,
+              displayName: displayName,
+              email: storedEmail,
+              department: 'Sotara',
+              role: 'Super Admin',
+              allowance: 0,
+              organization: 'sotara-admin',
+              organizationName: 'Sotara Admin',
+              dataSource: 'sotara-admin',
+              isOrgAdmin: true,
+              isSuperAdmin: true,
+              azureToken: null, // No token for local login
+            });
+
+            setAuthMethod(method);
+            setLoading(false);
+            return;
+          }
+
+          // For other organizations, extract email domain for organization lookup
           const emailDomain = '@' + storedEmail.split('@')[1];
           console.log(`🔍 Looking up organization for domain: ${emailDomain}`);
 
