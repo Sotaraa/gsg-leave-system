@@ -5,7 +5,7 @@ import { logoutEntra } from './services/entraAuth';
 import CONFIG from './config.js';
 import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail } from './utils/helpers.js';
 import { useAuth } from './services/auth.js';
-import { setSupabaseSession } from './supabase.js';
+import { setSupabaseSession, supabase } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
 import {
   sendApprovalNotification,
