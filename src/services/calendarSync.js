@@ -87,7 +87,7 @@ END:VTIMEZONE`;
 
       events += `BEGIN:VEVENT
 UID:termdate-${organizationId}-${idx}@gsg-leave-system
-DTSTAMP:${nowIcal}Z
+DTSTAMP:${nowIcal}
 DTSTART;VALUE=DATE:${startDate}
 DTEND;VALUE=DATE:${endDate}
 SUMMARY:${escapeICalText(td.description || td.type)}
@@ -116,7 +116,7 @@ END:VEVENT
 
           events += `BEGIN:VEVENT
 UID:schoolterm-${organizationId}-${term.academicYear}-${period.name}@gsg-leave-system
-DTSTAMP:${nowIcal}Z
+DTSTAMP:${nowIcal}
 DTSTART;VALUE=DATE:${startDate}
 DTEND;VALUE=DATE:${endDate}
 SUMMARY:${escapeICalText(period.name)} Term (${term.academicYear})
@@ -140,7 +140,7 @@ END:VEVENT
 
         events += `BEGIN:VEVENT
 UID:leave-${organizationId}-${leave.id}@gsg-leave-system
-DTSTAMP:${nowIcal}Z
+DTSTAMP:${nowIcal}
 DTSTART;VALUE=DATE:${startDate}
 DTEND;VALUE=DATE:${endDate}
 SUMMARY:${escapeICalText(leave.employeeName)} - ${escapeICalText(leave.type)}
