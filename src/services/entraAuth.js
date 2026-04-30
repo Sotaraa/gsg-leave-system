@@ -19,7 +19,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 
 const msalConfig = {
   auth: {
-    clientId: '2beb6b60-ecff-4467-bd64-92757a67b369', // Multi-tenant app ID
+    clientId: '374fdb37-de26-4b0b-a52d-54ab0833f57e', // Test app in user's tenant
     authority: 'https://login.microsoftonline.com/common', // Multi-tenant authority
     redirectUri: typeof window !== 'undefined'
       ? window.location.origin + '/'
