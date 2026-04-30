@@ -22,6 +22,7 @@ import {
 
 const requestFieldMap = {
   // Database -> JavaScript
+  'id': 'id',  // ← CRITICAL: Must be in map or it gets dropped by toDbFormat
   'employeeemail': 'employeeEmail',
   'employeename': 'employeeName',
   'startdate': 'startDate',
@@ -38,6 +39,12 @@ const requestFieldMap = {
 };
 
 const staffFieldMap = {
+  'id': 'id',  // ← CRITICAL: Must be in map or it gets dropped by toDbFormat
+  'name': 'name',
+  'email': 'email',
+  'department': 'department',
+  'role': 'role',
+  'allowance': 'allowance',
   'istermtime': 'isTermTime',
   'termtimedaystarget': 'termTimeDaysTarget',
   'workingdays': 'workingDays',
@@ -50,6 +57,7 @@ const staffFieldMap = {
 };
 
 const settingsFieldMap = {
+  'id': 'id',  // ← CRITICAL: Must be in map or it gets dropped by toDbFormat
   'defaultallowance': 'defaultAllowance',
   'maxcarryforwarddays': 'maxCarryForwardDays',
   'carryforwardenabled': 'carryForwardEnabled',
@@ -65,6 +73,7 @@ const settingsFieldMap = {
 };
 
 const schoolTermsFieldMap = {
+  'id': 'id',  // ← CRITICAL: Must be in map or it gets dropped by toDbFormat
   'academicyear': 'academicYear',
   'autumnstart': 'autumnStart',
   'autumnend': 'autumnEnd',
