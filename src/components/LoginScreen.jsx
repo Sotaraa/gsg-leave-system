@@ -61,20 +61,8 @@ const LoginScreen = ({ error }) => {
 
     try {
       const emailDomain = '@' + email.split('@')[1];
-      const isSotaraAdmin = emailDomain === '@sotara.co.uk';
 
-      // For Sotara admins, allow local email login (for org setup)
-      if (isSotaraAdmin) {
-        console.log('✅ Sotara admin detected, allowing local email login');
-        localStorage.setItem('GSG_USER_EMAIL', email.toLowerCase());
-        localStorage.setItem('GSG_USER_NAME', email.split('@')[0]);
-        localStorage.setItem('GSG_AUTH_METHOD', 'email');
-        // Reload to trigger auth check
-        window.location.href = '/';
-        return;
-      }
-
-      // For other domains, verify the domain is registered
+      // Verify the domain is registered (for all users)
       const { data: org } = await supabase
         .from('organizations')
         .select('id, name')
@@ -87,7 +75,7 @@ const LoginScreen = ({ error }) => {
         return;
       }
 
-      // ✅ Domain recognized - now proceed with Microsoft login
+      // ✅ Domain recognized - proceed with Microsoft login (secure)
       console.log(`✅ Email domain verified: ${org.name}`);
       await handleEntraLogin();
     } catch (err) {
@@ -157,7 +145,7 @@ const LoginScreen = ({ error }) => {
           <form onSubmit={handleEmailLogin} className="space-y-4">
             <input
               type="email"
-              placeholder="Enter your email (sotara.co.uk for admin setup)"
+              placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 backdrop-blur-md bg-white/60 border border-white/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder-slate-500 transition-all"
