@@ -46,10 +46,10 @@ export default async function handler(req, res) {
       debug.data.organization_error = err.message;
     }
 
-    // Check term dates
+    // Check term dates (use lowercase table/column names)
     try {
       const termDates = await supabaseQuery(
-        'mt_termDates',
+        'mt_termdates',
         `organization_id=eq.${organizationId}&select=date,type,description`
       );
       debug.data.termDates = {
@@ -60,11 +60,11 @@ export default async function handler(req, res) {
       debug.data.termDates_error = err.message;
     }
 
-    // Check school terms
+    // Check school terms (use lowercase table/column names)
     try {
       const schoolTerms = await supabaseQuery(
-        'mt_schoolTerms',
-        `organization_id=eq.${organizationId}&select=academicYear,autumnStart,autumnEnd`
+        'mt_schoolterms',
+        `organization_id=eq.${organizationId}&select=academicyear,autumnstart,autumnend`
       );
       debug.data.schoolTerms = {
         count: schoolTerms.length,
@@ -74,12 +74,12 @@ export default async function handler(req, res) {
       debug.data.schoolTerms_error = err.message;
     }
 
-    // Check approved leave
+    // Check approved leave (use lowercase column names)
     try {
       const today = new Date().toISOString().split('T')[0];
       const leaves = await supabaseQuery(
         'mt_requests',
-        `organization_id=eq.${organizationId}&status=eq.Approved&endDate=gte.${today}&select=id,employeeName,type,startDate,endDate,status`
+        `organization_id=eq.${organizationId}&status=eq.Approved&enddate=gte.${today}&select=id,employeename,type,startdate,enddate,status`
       );
       debug.data.approvedLeave = {
         count: leaves.length,
@@ -89,11 +89,11 @@ export default async function handler(req, res) {
       debug.data.approvedLeave_error = err.message;
     }
 
-    // Check ALL requests (regardless of status) to see what's there
+    // Check ALL requests (regardless of status) to see what's there (use lowercase)
     try {
       const allRequests = await supabaseQuery(
         'mt_requests',
-        `organization_id=eq.${organizationId}&select=id,employeeName,type,startDate,status`
+        `organization_id=eq.${organizationId}&select=id,employeename,type,startdate,status`
       );
       debug.data.allRequests = {
         count: allRequests.length,
