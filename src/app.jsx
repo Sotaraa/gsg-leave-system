@@ -1244,7 +1244,9 @@ const App = () => {
               exportRequestsCSV={exportRequestsCSV}
               handleBulkImport={handleBulkImport}
               handleDeleteSilentImports={handleDeleteSilentImports}
-              silentImportCount={requests.filter(r => r.importedSilently === true).length} />
+              silentImportCount={requests.filter(r => r.importedSilently === true).length}
+              supabase={supabase}
+              user={user} />
           )}
           {view === 'calendar' && (
             <div className={isCalendarExpanded ? "fixed inset-0 z-[100] bg-white p-4 overflow-auto" : "relative"}>
