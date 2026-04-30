@@ -1,7 +1,7 @@
 import CONFIG from '../config.js';
  
 // The live URL for your GSG HR Portal
-const PORTAL_URL = "https://gray-beach-036360010.1.azurestaticapps.net";
+const PORTAL_URL = "https://gsg-leave-system.vercel.app";
  
 export const generateUKBankHolidays = (year) => {
   const hols = [
