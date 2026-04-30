@@ -183,7 +183,16 @@ export const requestsApi = {
    */
   submitRequest: async (formData, organizationId) => {
     try {
+      // Generate UUID for new request (required by database)
+      const requestId = crypto.randomUUID?.() ||
+        'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+
       const newRequest = {
+        id: requestId,  // ← CRITICAL: Must include id
         ...formData,
         organization_id: organizationId,
         status: 'Pending',
@@ -227,18 +236,27 @@ export const requestsApi = {
       // Send approval email if we have the necessary info
       if (azureToken && employeeEmail && employeeName && requestType) {
         try {
-          await sendApprovalNotification(
+          console.log(`📧 Attempting to send approval notification to ${employeeEmail}...`);
+          const emailResult = await sendApprovalNotification(
             employeeEmail,
             employeeName,
             requestType,
             organizationId,
             azureToken
           );
-          console.log(`✅ Approval notification sent to ${employeeEmail}`);
+
+          if (emailResult.success) {
+            console.log(`✅ Approval notification sent to ${employeeEmail}`);
+          } else {
+            console.warn(`⚠️ Failed to send approval email: ${emailResult.error}`);
+          }
         } catch (emailError) {
-          console.warn(`⚠️ Failed to send approval email: ${emailError.message}`);
+          console.error(`❌ Exception sending approval email: ${emailError.message}`);
           // Don't fail the request approval if email fails
         }
+      } else {
+        if (!azureToken) console.warn(`⚠️ No azureToken available for email notifications`);
+        if (!employeeEmail) console.warn(`⚠️ No employeeEmail for notifications`);
       }
 
       return data?.[0];
@@ -265,7 +283,8 @@ export const requestsApi = {
       // Send rejection email if we have the necessary info
       if (azureToken && employeeEmail && employeeName && requestType) {
         try {
-          await sendRejectionNotification(
+          console.log(`📧 Attempting to send rejection notification to ${employeeEmail}...`);
+          const emailResult = await sendRejectionNotification(
             employeeEmail,
             employeeName,
             requestType,
@@ -273,11 +292,19 @@ export const requestsApi = {
             organizationId,
             azureToken
           );
-          console.log(`✅ Rejection notification sent to ${employeeEmail}`);
+
+          if (emailResult.success) {
+            console.log(`✅ Rejection notification sent to ${employeeEmail}`);
+          } else {
+            console.warn(`⚠️ Failed to send rejection email: ${emailResult.error}`);
+          }
         } catch (emailError) {
-          console.warn(`⚠️ Failed to send rejection email: ${emailError.message}`);
+          console.error(`❌ Exception sending rejection email: ${emailError.message}`);
           // Don't fail the request rejection if email fails
         }
+      } else {
+        if (!azureToken) console.warn(`⚠️ No azureToken available for email notifications`);
+        if (!employeeEmail) console.warn(`⚠️ No employeeEmail for notifications`);
       }
 
       return data?.[0];
