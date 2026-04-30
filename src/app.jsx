@@ -7,6 +7,7 @@ import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail }
 import { useAuth } from './services/auth.js';
 import { setSupabaseSession, supabase } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
+import { createLeaveEvent, deleteLeaveEvent } from './services/graphCalendar.js';
 import {
   sendApprovalNotification,
   sendRejectionNotification,
@@ -594,7 +595,41 @@ const App = () => {
           reqForApproval.employeeName,
           reqForApproval.type
         );
+
+        // 📅 Push event to employee's Outlook calendar via Microsoft Graph
+        if (user.azureToken) {
+          const calResult = await createLeaveEvent(
+            reqForApproval.employeeEmail,
+            reqForApproval.employeeName,
+            reqForApproval.type,
+            reqForApproval.startDate,
+            reqForApproval.endDate,
+            user.azureToken
+          );
+
+          if (calResult.success && calResult.eventId) {
+            // Store the calendar event ID for future reference (e.g., if we need to delete it)
+            try {
+              await supabase
+                .from('mt_requests')
+                .update({ calendar_event_id: calResult.eventId })
+                .eq('id', id);
+              console.log(`✅ Calendar event ID stored: ${calResult.eventId}`);
+            } catch (err) {
+              console.warn('Failed to store calendar event ID:', err.message);
+            }
+          }
+        }
       } else if (status === 'Rejected') {
+        // Delete calendar event if one was created
+        if (reqForApproval.calendar_event_id && user.azureToken) {
+          await deleteLeaveEvent(
+            reqForApproval.employeeEmail,
+            reqForApproval.calendar_event_id,
+            user.azureToken
+          );
+        }
+
         await supabaseApi.requestsApi.rejectRequest(
           id,
           rejectionReason || 'Request not approved',
@@ -608,7 +643,8 @@ const App = () => {
 
       setPendingApprovalId(null);
       const emailSent = user.azureToken ? ' & email sent' : '';
-      addNotification(`Request ${status}${emailSent}`);
+      const calendarSent = status === 'Approved' && user.azureToken ? ' & calendar updated' : '';
+      addNotification(`Request ${status}${emailSent}${calendarSent}`);
 
       // Calculate balance for display (legacy logic kept for backwards compatibility)
       const req = reqForApproval;
