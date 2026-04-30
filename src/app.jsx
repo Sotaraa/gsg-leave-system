@@ -518,7 +518,8 @@ const App = () => {
 
     const assignedApprover = myProfile?.approverEmail && !isEmailArchived(myProfile.approverEmail) ? myProfile.approverEmail : null;
     const baseRecipients = getNotificationRecipients(myDept);
-    const recipients = [...new Set([...baseRecipients, ...(assignedApprover ? [assignedApprover] : [])])];
+    // If an approver is assigned, send ONLY to them. Otherwise, send to default department heads.
+    const recipients = assignedApprover ? [assignedApprover] : baseRecipients;
 
     let balanceSummaryRows = [];
     if (!amITermTime && formData.type === 'Annual Leave') {
@@ -737,7 +738,7 @@ const App = () => {
       addNotification("Absence Recorded");
 
       if (!manualLeave.silentEmail) {
-        const allRecipients = [...new Set([staff.email, ...getNotificationRecipients(staff.department)])];
+        const allRecipients = [...new Set([staff.email, user.email, ...getNotificationRecipients(staff.department)])];
         const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
         await sendEmail(graphToken, activeRecipients,
           `Absence Recorded: ${staff.name}`,
