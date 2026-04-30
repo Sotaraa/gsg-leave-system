@@ -163,7 +163,6 @@ METHOD:PUBLISH
 X-WR-CALNAME:${escapeICalText(orgName)} - Leave & Holiday Calendar
 X-WR-CALDESC:School holidays, term dates, and approved staff leave for ${escapeICalText(orgName)}
 X-WR-TIMEZONE:Europe/London
-REFRESH-INTERVAL;VALUE=DURATION:PT1H
 ${vtimezone}
 ${events}END:VCALENDAR`;
 
