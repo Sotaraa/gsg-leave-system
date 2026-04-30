@@ -3,9 +3,9 @@ import { Lock, Plus, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../supabase';
 
 const OnboardingAdmin = ({ user, onSuccess }) => {
-  const [step, setStep] = useState('password'); // 'password' or 'form'
-  const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
+  // SECURITY: Removed master password feature - was exposed in client bundle.
+  // Access is now controlled by Microsoft authentication + email check + RLS.
+  const [step, setStep] = useState('form');
   const [formData, setFormData] = useState({
     organizationName: '',
     emailDomain: '',
@@ -24,20 +24,6 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
 
   // Check if user is the master admin
   const isMasterAdmin = user?.email?.toLowerCase() === 'info@sotara.co.uk';
-
-  const handlePasswordSubmit = (e) => {
-    e.preventDefault();
-    setPasswordError('');
-
-    const masterPassword = import.meta.env.VITE_MASTER_PASSWORD;
-
-    if (password === masterPassword) {
-      setStep('form');
-      setPassword('');
-    } else {
-      setPasswordError('Invalid master password');
-    }
-  };
 
   const handleFormChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -157,39 +143,6 @@ Domain: ${domain}`
           </h1>
           <p className="text-xs text-slate-600">Create new schools/organizations for Sotara LeaveHub</p>
         </div>
-
-        {/* Password Step */}
-        {step === 'password' && (
-          <div className="backdrop-blur-xl bg-white/30 rounded-3xl p-5 shadow-2xl border border-white/40">
-            <h2 className="text-lg font-bold text-slate-900 mb-4">Master Password Required</h2>
-
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Master Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter master password"
-                  className="w-full px-4 py-2 backdrop-blur-md bg-white/40 border border-white/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder-slate-500"
-                  autoFocus
-                />
-                {passwordError && (
-                  <p className="text-red-600 text-sm mt-2">{passwordError}</p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl"
-              >
-                Verify & Continue
-              </button>
-            </form>
-          </div>
-        )}
 
         {/* Organization Creation Form */}
         {step === 'form' && (
@@ -412,13 +365,6 @@ Domain: ${domain}`
                   className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-2 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Creating...' : 'Create Organization'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep('password')}
-                  className="px-6 bg-white/40 hover:bg-white/60 text-slate-900 font-bold py-2 rounded-xl transition-all border border-white/60"
-                >
-                  Back
                 </button>
               </div>
             </form>
