@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Trash2, Edit2, Archive, RotateCcw, Download, Upload, AlertCircle, CheckCircle2,
-         Users, ClipboardList, Settings as SettingsIcon, Database } from 'lucide-react';
+         Users, ClipboardList, Settings as SettingsIcon, Database, Calendar } from 'lucide-react';
 import CONFIG from '../../config.js';
 import { formatDateUK, getTermForDate } from '../../utils/helpers.js';
 import { TypeNote } from './EmployeeView.jsx';
+import CalendarSubscription from '../CalendarSubscription.jsx';
 
 const AdminView = ({
   staffList, requests, departments, termDates, announcements,
@@ -19,7 +20,8 @@ const AdminView = ({
   systemSettings, updateSystemSettings,
   currentHolidayYear, calculateCarryForwardData, applyCarryForward, getYearStartForClosingDate,
   exportStaffCSV, exportRequestsCSV,
-  handleBulkImport, handleDeleteSilentImports, silentImportCount
+  handleBulkImport, handleDeleteSilentImports, silentImportCount,
+  organizationId, organizationName
 }) => {
   const [adminTab, setAdminTab] = useState('staff');
   const [carryForwardPreview, setCarryForwardPreview] = useState(null);
@@ -100,6 +102,7 @@ const AdminView = ({
   const TABS = [
     { key: 'staff',    label: 'Manage Staff',  Icon: Users         },
     { key: 'requests', label: 'Requests',       Icon: ClipboardList },
+    { key: 'calendar', label: 'Calendar',       Icon: Calendar      },
     { key: 'settings', label: 'Settings',       Icon: SettingsIcon  },
     { key: 'data',     label: 'Data & Import',  Icon: Database      },
   ];
@@ -802,6 +805,13 @@ const AdminView = ({
             </div>
           </div>
         </div>
+      </div>
+    )}
+
+    {/* ════ CALENDAR TAB ════ */}
+    {adminTab === 'calendar' && (
+      <div className="py-4">
+        <CalendarSubscription organizationId={organizationId} organizationName={organizationName} />
       </div>
     )}
 

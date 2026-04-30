@@ -1231,6 +1231,8 @@ const App = () => {
               setShowArchived={setShowArchived} prepareEdit={prepareEdit}
               toggleArchiveStaff={toggleArchiveStaff}
               permanentlyDeleteStaff={permanentlyDeleteStaff}
+              organizationId={user?.organization}
+              organizationName={user?.organizationName}
               searchResults={searchResults}
               searchDirectory={searchDirectory} selectDirectoryUser={selectDirectoryUser}
               systemSettings={systemSettings} updateSystemSettings={updateSystemSettings}
