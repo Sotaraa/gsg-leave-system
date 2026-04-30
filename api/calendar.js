@@ -13,41 +13,45 @@
 
 import { generateICalendar } from '../src/services/calendarSync.js';
 
-// Get Supabase credentials from environment variables
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+// Supabase credentials (hardcoded, same as in src/supabase.js)
+const SUPABASE_URL = 'https://uzmdqryhzijkmwedvwka.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV6bWRxcnloemlqa213ZWR2d2thIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjM2MzMsImV4cCI6MjA5MjkzOTYzM30.O249bdKDyI4IUFRD5pdKIvtxYF1ihR0uQ2SOVBvl3qc';
 
-console.log('[Calendar API] Credentials available:', {
-  url: !!SUPABASE_URL,
-  key: !!SUPABASE_KEY
+console.log('[Calendar API] Supabase initialized:', {
+  url: SUPABASE_URL ? '✓' : '✗',
+  key: SUPABASE_KEY ? '✓' : '✗'
 });
 
 /**
  * Make authenticated request to Supabase REST API
  */
 async function supabaseQuery(table, query = '') {
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error('Missing Supabase credentials');
-  }
-
   const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`;
-  console.log(`[Calendar API] Querying: ${table}`);
+  console.log(`[Calendar API] Querying: ${url.substring(0, 80)}...`);
 
-  const response = await fetch(url, {
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Accept': 'application/json'
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Accept': 'application/json',
+        'Content-Profile': 'public'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`[Calendar API] Query failed (${response.status}):`, error.substring(0, 200));
+      throw new Error(`Supabase ${response.status}: ${error}`);
     }
-  });
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`[Calendar API] Query failed:`, error);
-    throw new Error(`Supabase query failed: ${response.status} ${error}`);
+    const data = await response.json();
+    console.log(`[Calendar API] Query returned ${Array.isArray(data) ? data.length : 1} record(s)`);
+    return data;
+  } catch (err) {
+    console.error(`[Calendar API] Fetch error:`, err.message);
+    throw err;
   }
-
-  return response.json();
 }
 
 export default async function handler(req, res) {
