@@ -88,10 +88,11 @@ export default async function handler(req, res) {
     console.log(`[Calendar API] Found organization: ${orgData.name}`);
 
     // Fetch term dates (holidays, school breaks)
+    // Note: Table names in Supabase are lowercase!
     let termDates = [];
     try {
       termDates = await supabaseQuery(
-        'mt_termDates',
+        'mt_termdates',
         `organization_id=eq.${organizationId}&select=date,type,description&order=date.asc`
       );
     } catch (err) {
@@ -101,23 +102,45 @@ export default async function handler(req, res) {
     // Fetch school terms
     let schoolTerms = [];
     try {
-      schoolTerms = await supabaseQuery(
-        'mt_schoolTerms',
-        `organization_id=eq.${organizationId}&select=academicYear,autumnStart,autumnEnd,springStart,springEnd,summerStart,summerEnd&order=academicYear.desc&limit=3`
+      const rawTerms = await supabaseQuery(
+        'mt_schoolterms',
+        `organization_id=eq.${organizationId}&select=academicyear,autumnstart,autumnend,springstart,springend,summerstart,summerend&order=academicyear.desc&limit=3`
       );
+      // Map lowercase column names to camelCase
+      schoolTerms = rawTerms.map(t => ({
+        academicYear: t.academicyear,
+        autumnStart: t.autumnstart,
+        autumnEnd: t.autumnend,
+        springStart: t.springstart,
+        springEnd: t.springend,
+        summerStart: t.summerstart,
+        summerEnd: t.summerend
+      }));
     } catch (err) {
       console.warn(`[Calendar API] School terms fetch error:`, err.message);
     }
 
     // Optionally fetch approved leave
+    // Note: Column names in Supabase are lowercase!
     let approvedLeave = [];
     if (include === 'leave') {
       try {
         const today = new Date().toISOString().split('T')[0];
-        approvedLeave = await supabaseQuery(
+        const rawLeaves = await supabaseQuery(
           'mt_requests',
-          `organization_id=eq.${organizationId}&status=eq.Approved&endDate=gte.${today}&select=id,employeeName,employeeEmail,type,startDate,endDate,status,daysCount&order=startDate.asc`
+          `organization_id=eq.${organizationId}&status=eq.Approved&enddate=gte.${today}&select=id,employeename,employeeemail,type,startdate,enddate,status,dayscount&order=startdate.asc`
         );
+        // Map lowercase column names to camelCase
+        approvedLeave = rawLeaves.map(leave => ({
+          id: leave.id,
+          employeeName: leave.employeename,
+          employeeEmail: leave.employeeemail,
+          type: leave.type,
+          startDate: leave.startdate,
+          endDate: leave.enddate,
+          status: leave.status,
+          daysCount: leave.dayscount
+        }));
       } catch (err) {
         console.warn(`[Calendar API] Leave fetch error:`, err.message);
       }
