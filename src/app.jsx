@@ -738,7 +738,11 @@ const App = () => {
       addNotification("Absence Recorded");
 
       if (!manualLeave.silentEmail) {
-        const allRecipients = [...new Set([staff.email, user.email, ...getNotificationRecipients(staff.department)])];
+        // Send to: employee, admin who recorded it, and assigned approver (or department heads if no approver)
+        const assignedApprover = staff.approverEmail && !isEmailArchived(staff.approverEmail) ? staff.approverEmail : null;
+        const baseRecipients = getNotificationRecipients(staff.department);
+        const approvalRecipients = assignedApprover ? [assignedApprover] : baseRecipients;
+        const allRecipients = [...new Set([staff.email, user.email, ...approvalRecipients])];
         const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
         await sendEmail(graphToken, activeRecipients,
           `Absence Recorded: ${staff.name}`,
