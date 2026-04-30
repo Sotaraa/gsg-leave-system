@@ -658,7 +658,11 @@ const App = () => {
         await supabaseApi.requestsApi.deleteRequest(id, user.organization);
         addNotification("Deleted");
         if (req) {
-          const allRecipients = [...new Set([req.employeeEmail, ...getNotificationRecipients(req.department)])];
+          const empStaff = staffList.find(s => s.email?.toLowerCase() === req.employeeEmail?.toLowerCase());
+          const assignedApprover = empStaff?.approverEmail && !isEmailArchived(empStaff.approverEmail) ? empStaff.approverEmail : null;
+          const baseRecipients = getNotificationRecipients(req.department);
+          const approvalRecipients = assignedApprover ? [assignedApprover] : baseRecipients;
+          const allRecipients = [...new Set([req.employeeEmail, user.email, ...approvalRecipients])];
           const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
           await sendEmail(graphToken, activeRecipients,
             `Leave Record Deleted: ${req.employeeName}`,
