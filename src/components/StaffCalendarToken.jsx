@@ -47,22 +47,29 @@ const StaffCalendarToken = ({ organizationId, organizationName, supabase, user }
 
     try {
       setRegenerating(true);
+      setError(null);
+
       const newToken = generateToken();
 
-      const { error: err } = await supabase
+      const { data, error: err } = await supabase
         .from('organizations')
         .update({
           calendar_access_token: newToken,
           calendar_token_created_at: new Date().toISOString()
         })
-        .eq('id', organizationId);
+        .eq('id', organizationId)
+        .select('calendar_access_token');
 
-      if (err) throw err;
+      if (err) {
+        console.error('Database update error:', err);
+        throw err;
+      }
 
+      console.log('✅ Token saved to database:', newToken.substring(0, 8) + '...');
       setToken(newToken);
-      setError(null);
     } catch (err) {
-      setError(`Failed to regenerate token: ${err.message}`);
+      console.error('Token generation failed:', err);
+      setError(`Failed to save token: ${err.message}`);
     } finally {
       setRegenerating(false);
     }
@@ -109,19 +116,23 @@ const StaffCalendarToken = ({ organizationId, organizationName, supabase, user }
           <div>
             <h4 className="font-bold text-amber-900">No Token Generated</h4>
             <p className="text-sm text-amber-800 mt-1">
-              Click "Generate New Token" below to create an access token for staff calendar subscriptions.
+              Click "Generate Initial Token" below to create an access token for staff calendar subscriptions.
             </p>
           </div>
         </div>
         <button
-          onClick={() => {
-            const newToken = generateToken();
-            setToken(newToken);
-            regenerateToken();
-          }}
-          className="mt-4 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm"
+          onClick={regenerateToken}
+          disabled={regenerating}
+          className="mt-4 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:bg-amber-400 font-medium text-sm flex items-center gap-2"
         >
-          Generate Initial Token
+          {regenerating ? (
+            <>
+              <div className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+              Generating...
+            </>
+          ) : (
+            'Generate Initial Token'
+          )}
         </button>
       </div>
     );
