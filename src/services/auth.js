@@ -138,19 +138,135 @@ const ensureUserProfile = async (email, organizationId, role = 'Staff') => {
 };
 
 /**
+ * SUPABASE AUTH INTEGRATION
+ *
+ * Sign up/sign in user with Supabase Auth after MSAL authentication
+ * This links the MSAL-verified user to Supabase Auth, enabling RLS policies
+ *
+ * @param {string} email - User email (verified by MSAL)
+ * @param {string} organizationId - Organization ID from domain lookup
+ * @returns {Promise<{success: boolean, user: object, session: object, error: string}>}
+ */
+const authenticateWithSupabase = async (email, organizationId) => {
+  try {
+    console.log(`🔐 Authenticating with Supabase Auth: ${email}`);
+
+    // Generate deterministic password from email
+    // (We use this because users authenticate via MSAL, not passwords)
+    // This password is the same every time for the same email
+    const buffer = new TextEncoder().encode(email + 'gsg-leave-system-auth');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const password = hashHex.substring(0, 32); // Use first 32 chars as password
+
+    // Step 1: Try to sign up (first time users)
+    // If user already exists, signUp will attempt to sign them in
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        data: {
+          full_name: email.split('@')[0],
+        }
+      }
+    });
+
+    let session = null;
+    let authUser = null;
+
+    if (signUpError) {
+      // If signup failed (user likely exists), try signing in
+      console.log(`📝 Sign-up returned: ${signUpError.message}, attempting sign-in...`);
+
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+      });
+
+      if (signInError) {
+        throw new Error(`Auth failed: ${signInError.message}`);
+      }
+
+      session = signInData.session;
+      authUser = signInData.user;
+    } else {
+      // Sign-up succeeded
+      session = signUpData.session;
+      authUser = signUpData.user;
+      if (authUser) {
+        console.log(`✅ New Supabase Auth user created: ${authUser.id}`);
+      }
+    }
+
+    // Step 2: Update user_profiles with correct organization_id and role
+    if (authUser && session) {
+      // Get user's role from mt_staff if they exist in the organization
+      const { data: staffData } = await supabase
+        .from('mt_staff')
+        .select('role')
+        .eq('organization_id', organizationId)
+        .ilike('email', email)
+        .single();
+
+      const userRole = staffData?.role || 'Staff';
+      const isSuperAdmin = email.toLowerCase() === 'info@sotara.co.uk';
+      const isOrgAdmin = userRole === 'Admin';
+
+      // Update user_profiles with real organization_id and role
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .upsert({
+          auth_user_id: authUser.id,
+          organization_id: organizationId,
+          email: email,
+          full_name: authUser.user_metadata?.full_name || email.split('@')[0],
+          role: userRole,
+          is_super_admin: isSuperAdmin,
+          is_organization_admin: isOrgAdmin,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'auth_user_id'
+        });
+
+      if (profileError) {
+        console.error('⚠️ Failed to update user profile:', profileError);
+        // Don't throw - profile auto-creation trigger should have created placeholder
+      } else {
+        console.log(`✅ User profile updated: org=${organizationId}, role=${userRole}, superAdmin=${isSuperAdmin}`);
+      }
+    }
+
+    return {
+      success: true,
+      user: authUser,
+      session: session
+    };
+  } catch (error) {
+    console.error('❌ Supabase authentication failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
  * Multi-tenant authentication hook
  *
  * Routing logic:
  * 1. Verify auth method is 'entra' and MSAL holds a valid session
  * 2. Extract email domain from user email
  * 3. Check Supabase organizations table for domain match
- * 4. If found → Load user from Supabase mt_staff table (dataSource: 'supabase')
- * 5. If not found → deny access
+ * 4. Authenticate with Supabase Auth (enables RLS policies)
+ * 5. If found → Load user from Supabase mt_staff table (dataSource: 'supabase')
+ * 6. If not found → deny access
  */
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authMethod, setAuthMethod] = useState(null);
+  const [supabaseSession, setSupabaseSession] = useState(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -209,8 +325,24 @@ export const useAuth = () => {
             .single();
 
           if (org && !orgError) {
-            // Organization found in Supabase - this is a new multi-tenant user
+            // Organization found in Supabase - this is a multi-tenant user
             console.log(`✅ Organization found: ${org.name}`);
+
+            // ─── NEW: AUTHENTICATE WITH SUPABASE AUTH ─────────────────────────────────
+            // This links the MSAL-verified user to Supabase Auth, enabling RLS policies
+            const supabaseAuth = await authenticateWithSupabase(storedEmail, org.id);
+
+            if (supabaseAuth.success && supabaseAuth.session) {
+              console.log('✅ Supabase Auth authentication successful');
+              setSupabaseSession(supabaseAuth.session);
+              // Store session in localStorage for use by supabaseApi.js
+              localStorage.setItem('SUPABASE_SESSION', JSON.stringify(supabaseAuth.session));
+            } else {
+              console.warn('⚠️ Supabase Auth failed:', supabaseAuth.error);
+              console.warn('   Continuing with anon key (less secure fallback)');
+              localStorage.removeItem('SUPABASE_SESSION');
+            }
+            // ────────────────────────────────────────────────────────────────────────────
 
             // Get azure token from the Sotara multi-tenant MSAL instance
             // (this is the instance that actually authenticated the user)
@@ -304,7 +436,7 @@ export const useAuth = () => {
     initAuth();
   }, []);
 
-  return { user, loading, authMethod };
+  return { user, loading, authMethod, supabaseSession };
 };
 
 /**

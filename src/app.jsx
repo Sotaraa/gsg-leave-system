@@ -5,6 +5,7 @@ import { logoutEntra } from './services/entraAuth';
 import CONFIG from './config.js';
 import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail } from './utils/helpers.js';
 import { useAuth } from './services/auth.js';
+import { setSupabaseSession } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
 import {
   sendApprovalNotification,
@@ -27,7 +28,7 @@ const INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
 const WARNING_BEFORE_MS = 60 * 1000;
 
 const App = () => {
-  const { user: authUser, loading: authLoading } = useAuth();
+  const { user: authUser, loading: authLoading, supabaseSession } = useAuth();
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState('employee');
@@ -82,6 +83,9 @@ const App = () => {
     setShowInactivityWarning(false);
     const authMethod = localStorage.getItem('GSG_AUTH_METHOD');
 
+    // Clear Supabase session
+    localStorage.removeItem('SUPABASE_SESSION');
+
     // Clear auth localStorage
     localStorage.removeItem('GSG_USER_EMAIL');
     localStorage.removeItem('GSG_USER_NAME');
@@ -94,6 +98,14 @@ const App = () => {
       } catch (err) {
         console.error('Entra logout error:', err);
       }
+    }
+
+    // Sign out from Supabase Auth
+    try {
+      // This is safe even if user didn't complete Supabase auth
+      await import('./supabase.js').then(m => m.supabase.auth.signOut());
+    } catch (err) {
+      console.warn('Supabase signOut error (non-critical):', err);
     }
 
     setGraphToken(null);
@@ -138,6 +150,15 @@ const App = () => {
       setIsLoading(false);
     }
   }, [authUser, authLoading]);
+
+  // ─── SUPABASE AUTH INTEGRATION ─────────────────────────────────────────────
+  // Upgrade Supabase client from anon key to authenticated JWT
+  useEffect(() => {
+    if (supabaseSession) {
+      console.log('🔐 App.jsx: Upgrading Supabase client to JWT authentication');
+      setSupabaseSession(supabaseSession);
+    }
+  }, [supabaseSession]);
 
   useEffect(() => {
     if (!user || !user.organization) return;
