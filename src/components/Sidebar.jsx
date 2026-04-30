@@ -1,14 +1,21 @@
 import React from 'react';
 import { User, CheckSquare, Calendar, BarChart2, Settings, LogOut, Sparkles, Lock } from 'lucide-react';
 
-const Sidebar = ({ view, setView, myRole, onShowOnboarding, userEmail }) => {
+const Sidebar = ({ view, setView, myRole, onShowOnboarding, onLogout, userEmail }) => {
   const isAdmin = myRole === 'Admin';
   const canManage = myRole === 'Dept Head' || isAdmin;
   const isMasterAdmin = userEmail?.toLowerCase() === 'info@sotara.co.uk';
 
   const handleLogout = () => {
-    localStorage.removeItem('GSG_USER_EMAIL');
-    window.location.href = '/';
+    if (onLogout) {
+      onLogout(); // Use proper logout from app.jsx (clears MSAL + localStorage)
+    } else {
+      // Fallback: clear storage and reload
+      localStorage.removeItem('GSG_USER_EMAIL');
+      localStorage.removeItem('GSG_USER_NAME');
+      localStorage.removeItem('GSG_AUTH_METHOD');
+      window.location.href = '/';
+    }
   };
 
   return (

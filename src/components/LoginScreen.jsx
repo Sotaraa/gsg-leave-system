@@ -1,10 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, Shield } from 'lucide-react';
 import { loginWithEntra } from '../services/entraAuth';
+import { supabase } from '../supabase';
 
-const LoginScreen = ({ onLogin, error }) => {
+const LoginScreen = ({ error }) => {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [detectedOrg, setDetectedOrg] = useState(null);
   const [entraLoading, setEntraLoading] = useState(false);
   const [entraError, setEntraError] = useState('');
+
+  // Detect organization by email domain
+  useEffect(() => {
+    if (!email || !email.includes('@')) {
+      setDetectedOrg(null);
+      return;
+    }
+    const detectDomain = async () => {
+      try {
+        const emailDomain = '@' + email.split('@')[1];
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('id, name')
+          .eq('domain', emailDomain)
+          .single();
+        setDetectedOrg(org || null);
+      } catch {
+        setDetectedOrg(null);
+      }
+    };
+    detectDomain();
+  }, [email]);
 
   const handleEntraLogin = async () => {
     console.log('🔵 Microsoft login button clicked');
@@ -13,8 +39,6 @@ const LoginScreen = ({ onLogin, error }) => {
     try {
       const result = await loginWithEntra();
       if (result.success) {
-        // loginRedirect navigates away — user will be redirected to Microsoft login
-        // On return, main.jsx handleRedirectPromise() processes the response
         console.log('✅ Redirecting to Microsoft login...');
       } else {
         console.error('❌ Entra login failed:', result.error);
@@ -25,6 +49,39 @@ const LoginScreen = ({ onLogin, error }) => {
       console.error('❌ Entra login error:', err);
       setEntraError(`Error: ${err.message || err}`);
       setEntraLoading(false);
+    }
+  };
+
+  const handleEmailLogin = async (e) => {
+    e.preventDefault();
+    if (!email) return;
+
+    setLoading(true);
+    setEntraError('');
+
+    try {
+      const emailDomain = '@' + email.split('@')[1];
+
+      // Verify the domain is registered
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .eq('domain', emailDomain)
+        .single();
+
+      if (!org) {
+        setEntraError('This email domain is not registered. Please contact your administrator.');
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Domain recognized - now proceed with Microsoft login
+      console.log(`✅ Email domain verified: ${org.name}`);
+      await handleEntraLogin();
+    } catch (err) {
+      console.error('Email verification error:', err);
+      setEntraError('Email verification failed. Please try the Microsoft login button.');
+      setLoading(false);
     }
   };
 
@@ -55,34 +112,71 @@ const LoginScreen = ({ onLogin, error }) => {
             <p className="text-slate-600 font-semibold text-sm">Manage your time with ease</p>
           </div>
 
-          {/* Microsoft Sign-In Button */}
+          {/* Microsoft Sign-In Button (Primary) */}
           <button
             type="button"
             onClick={handleEntraLogin}
             disabled={entraLoading}
-            className="w-full bg-white hover:bg-gray-50 text-slate-900 font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-md hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 cursor-pointer"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {entraLoading ? (
               <>
-                <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 <span>Connecting to Microsoft...</span>
               </>
             ) : (
               <>
                 <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6v-11.4H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" fill="#0078D4"/>
+                  <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6v-11.4H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" fill="currentColor"/>
                 </svg>
                 <span>Sign in with Microsoft</span>
               </>
             )}
           </button>
 
+          {/* Divider */}
+          <div className="my-6 flex items-center gap-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-slate-300"></div>
+            <span className="text-xs text-slate-500 font-medium">OR</span>
+            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-slate-300"></div>
+          </div>
+
+          {/* Email login for domain verification and org admins */}
+          <form onSubmit={handleEmailLogin} className="space-y-4">
+            <input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 backdrop-blur-md bg-white/60 border border-white/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder-slate-500 transition-all"
+              required
+            />
+            <button
+              type="submit"
+              disabled={loading || !email}
+              className="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Verifying...</span>
+              </> : <>
+                <span>Continue with Email</span>
+              </>}
+            </button>
+            {detectedOrg && (
+              <div className="p-2 bg-green-50/80 border border-green-200/50 rounded-lg flex items-center gap-2 text-xs text-green-700">
+                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                <span><strong>{detectedOrg.name}</strong> organization detected</span>
+              </div>
+            )}
+          </form>
+
           {/* Security note */}
-          <div className="mt-6 flex items-start gap-2 text-xs text-slate-500">
+          <div className="mt-4 flex items-start gap-2 text-xs text-slate-500">
             <Shield size={14} className="mt-0.5 flex-shrink-0 text-blue-400" />
             <p>
-              Sign in using your organisation's Microsoft 365 account.
-              Your credentials are verified securely by Microsoft.
+              Your organization's domain is automatically recognized.
+              All logins are verified through Microsoft 365.
             </p>
           </div>
 

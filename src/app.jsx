@@ -456,10 +456,6 @@ const App = () => {
     });
   };
 
-  // Placeholder - login is now handled by Supabase in LoginScreen.jsx
-  const handleLogin = async () => {
-    // This is deprecated - use Supabase auth via LoginScreen instead
-  };
 
   const submitRequest = async (e) => {
     e.preventDefault();
@@ -1080,8 +1076,13 @@ const App = () => {
     return { tally, individualData, yearLabel: currentHolidayYear.label };
   }, [requests, staffList, selectedDeptFilter, myRole, myDept, currentHolidayYear, systemSettings]);
 
-  if (isLoading) return <div className="h-screen flex items-center justify-center text-emerald-800 font-bold">Connecting...</div>;
-  if (!user) return <LoginScreen onLogin={handleLogin} error={loginError} />;
+  if (isLoading) return (
+    <div className="h-screen flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-blue-50 via-white to-blue-50">
+      <div className="w-10 h-10 border-4 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
+      <p className="text-slate-500 font-medium text-sm">Loading…</p>
+    </div>
+  );
+  if (!user) return <LoginScreen error={loginError} />;
 
   const isAdmin = myRole === 'Admin';
   const canManage = myRole === 'Dept Head' || isAdmin;
@@ -1145,7 +1146,7 @@ const App = () => {
 
         {!showOnboarding && (
           <>
-        <Sidebar view={view} setView={setView} myRole={myRole} userEmail={user?.email} onShowOnboarding={() => {
+        <Sidebar view={view} setView={setView} myRole={myRole} userEmail={user?.email} onLogout={handleLogout} onShowOnboarding={() => {
           if (user?.email?.toLowerCase() === 'info@sotara.co.uk') {
             setShowOnboarding(true);
           } else {
