@@ -2,11 +2,10 @@
  * Calendar Sync Service
  * Generates iCalendar (ICS) format for Outlook/Google Calendar subscription
  *
- * Includes:
- * - School holidays
- * - Term dates (school term periods)
- * - Approved leave requests (optional, configurable per organization)
+ * RFC 5545 compliant - uses CRLF line endings as required by the spec
  */
+
+const CRLF = '\r\n';
 
 /**
  * Format date to iCalendar format (YYYYMMDD)
@@ -36,14 +35,19 @@ const escapeICalText = (text) => {
 };
 
 /**
+ * Build a VEVENT block with proper CRLF line endings
+ */
+const buildEvent = (props) => {
+  const lines = ['BEGIN:VEVENT'];
+  for (const [key, value] of Object.entries(props)) {
+    lines.push(`${key}:${value}`);
+  }
+  lines.push('END:VEVENT');
+  return lines.join(CRLF);
+};
+
+/**
  * Generate iCalendar feed with holidays, term dates, and optional leave
- *
- * @param {string} organizationId - Organization ID
- * @param {array} termDates - Term date events [{date, type, description}]
- * @param {array} schoolTerms - School term definitions [{academicYear, autumnStart, ...}]
- * @param {array} approvedLeave - Optional approved leave requests
- * @param {object} org - Organization details {name, notificationEmail}
- * @returns {string} iCalendar (.ics) format
  */
 export const generateICalendar = (
   organizationId,
@@ -53,60 +57,66 @@ export const generateICalendar = (
   org = {}
 ) => {
   const orgName = org.name || organizationId;
-  const now = new Date();
-  const nowIcal = formatICalDateTime(now);
+  const nowIcal = formatICalDateTime(new Date());
 
-  // Calendar VTIMEZONE for UK (GMT/BST)
-  const vtimezone = `BEGIN:VTIMEZONE
-TZID:Europe/London
-BEGIN:STANDARD
-DTSTART:19701025T020000
-RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
-TZOFFSETFROM:+0100
-TZOFFSETTO:+0000
-TZNAME:GMT
-END:STANDARD
-BEGIN:DAYLIGHT
-DTSTART:19700329T010000
-RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
-TZOFFSETFROM:+0000
-TZOFFSETTO:+0100
-TZNAME:BST
-END:DAYLIGHT
-END:VTIMEZONE`;
+  const lines = [];
 
-  // Build events
-  let events = '';
+  // Calendar header
+  lines.push('BEGIN:VCALENDAR');
+  lines.push('VERSION:2.0');
+  lines.push('PRODID:-//Sotara//GSG Leave System//EN');
+  lines.push('CALSCALE:GREGORIAN');
+  lines.push('METHOD:PUBLISH');
+  lines.push(`X-WR-CALNAME:${escapeICalText(orgName)} - Leave & Holiday Calendar`);
+  lines.push(`X-WR-CALDESC:School holidays\\, term dates\\, and approved staff leave for ${escapeICalText(orgName)}`);
+  lines.push('X-WR-TIMEZONE:Europe/London');
 
-  // Add term dates (holidays, school breaks, etc.)
+  // VTIMEZONE block for UK (GMT/BST)
+  lines.push('BEGIN:VTIMEZONE');
+  lines.push('TZID:Europe/London');
+  lines.push('BEGIN:STANDARD');
+  lines.push('DTSTART:19701025T020000');
+  lines.push('RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU');
+  lines.push('TZOFFSETFROM:+0100');
+  lines.push('TZOFFSETTO:+0000');
+  lines.push('TZNAME:GMT');
+  lines.push('END:STANDARD');
+  lines.push('BEGIN:DAYLIGHT');
+  lines.push('DTSTART:19700329T010000');
+  lines.push('RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU');
+  lines.push('TZOFFSETFROM:+0000');
+  lines.push('TZOFFSETTO:+0100');
+  lines.push('TZNAME:BST');
+  lines.push('END:DAYLIGHT');
+  lines.push('END:VTIMEZONE');
+
+  // Term dates (holidays, school breaks)
   if (termDates && termDates.length > 0) {
     termDates.forEach((td, idx) => {
       const startDate = formatICalDate(td.date);
-      // For all-day events, end date is day after in iCalendar format
       const endDate = formatICalDate(new Date(new Date(td.date).getTime() + 86400000));
 
-      events += `BEGIN:VEVENT
-UID:termdate-${organizationId}-${idx}@gsg-leave-system
-DTSTAMP:${nowIcal}
-DTSTART;VALUE=DATE:${startDate}
-DTEND;VALUE=DATE:${endDate}
-SUMMARY:${escapeICalText(td.description || td.type)}
-DESCRIPTION:${escapeICalText(td.type)}
-CATEGORIES:Holiday,SchoolCalendar
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-`;
+      lines.push(buildEvent({
+        'UID': `termdate-${organizationId}-${idx}@gsg-leave-system`,
+        'DTSTAMP': nowIcal,
+        'DTSTART;VALUE=DATE': startDate,
+        'DTEND;VALUE=DATE': endDate,
+        'SUMMARY': escapeICalText(td.description || td.type),
+        'DESCRIPTION': escapeICalText(td.type),
+        'CATEGORIES': 'Holiday,SchoolCalendar',
+        'STATUS': 'CONFIRMED',
+        'TRANSP': 'TRANSPARENT',
+      }));
     });
   }
 
-  // Add school terms (visual blocks)
+  // School term blocks
   if (schoolTerms && schoolTerms.length > 0) {
-    schoolTerms.forEach((term, idx) => {
+    schoolTerms.forEach((term) => {
       const termPeriods = [
         { name: 'Autumn', start: term.autumnStart, end: term.autumnEnd },
         { name: 'Spring', start: term.springStart, end: term.springEnd },
-        { name: 'Summer', start: term.summerStart, end: term.summerEnd }
+        { name: 'Summer', start: term.summerStart, end: term.summerEnd },
       ];
 
       termPeriods.forEach((period) => {
@@ -114,76 +124,60 @@ END:VEVENT
           const startDate = formatICalDate(period.start);
           const endDate = formatICalDate(new Date(new Date(period.end).getTime() + 86400000));
 
-          events += `BEGIN:VEVENT
-UID:schoolterm-${organizationId}-${term.academicYear}-${period.name}@gsg-leave-system
-DTSTAMP:${nowIcal}
-DTSTART;VALUE=DATE:${startDate}
-DTEND;VALUE=DATE:${endDate}
-SUMMARY:${escapeICalText(period.name)} Term (${term.academicYear})
-DESCRIPTION:School term period
-CATEGORIES:SchoolTerm
-STATUS:CONFIRMED
-TRANSP:OPAQUE
-END:VEVENT
-`;
+          lines.push(buildEvent({
+            'UID': `schoolterm-${organizationId}-${term.academicYear}-${period.name}@gsg-leave-system`,
+            'DTSTAMP': nowIcal,
+            'DTSTART;VALUE=DATE': startDate,
+            'DTEND;VALUE=DATE': endDate,
+            'SUMMARY': escapeICalText(`${period.name} Term (${term.academicYear})`),
+            'DESCRIPTION': 'School term period',
+            'CATEGORIES': 'SchoolTerm',
+            'STATUS': 'CONFIRMED',
+            'TRANSP': 'OPAQUE',
+          }));
         }
       });
     });
   }
 
-  // Add approved leave (if included)
+  // Approved leave
   if (approvedLeave && approvedLeave.length > 0) {
-    approvedLeave.forEach((leave, idx) => {
+    approvedLeave.forEach((leave) => {
       if (leave.status === 'Approved') {
         const startDate = formatICalDate(leave.startDate);
         const endDate = formatICalDate(new Date(new Date(leave.endDate || leave.startDate).getTime() + 86400000));
 
-        events += `BEGIN:VEVENT
-UID:leave-${organizationId}-${leave.id}@gsg-leave-system
-DTSTAMP:${nowIcal}
-DTSTART;VALUE=DATE:${startDate}
-DTEND;VALUE=DATE:${endDate}
-SUMMARY:${escapeICalText(leave.employeeName)} - ${escapeICalText(leave.type)}
-DESCRIPTION:${escapeICalText(leave.employeeName)} on ${leave.type}
-CATEGORIES:Leave,ApprovedLeave
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-`;
+        lines.push(buildEvent({
+          'UID': `leave-${organizationId}-${leave.id}@gsg-leave-system`,
+          'DTSTAMP': nowIcal,
+          'DTSTART;VALUE=DATE': startDate,
+          'DTEND;VALUE=DATE': endDate,
+          'SUMMARY': escapeICalText(`${leave.employeeName} - ${leave.type}`),
+          'DESCRIPTION': escapeICalText(`${leave.employeeName} on ${leave.type}`),
+          'CATEGORIES': 'Leave,ApprovedLeave',
+          'STATUS': 'CONFIRMED',
+          'TRANSP': 'TRANSPARENT',
+        }));
       }
     });
   }
 
-  // Build complete iCalendar
-  const ical = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Sotara//GSG Leave System//EN
-CALSCALE:GREGORIAN
-METHOD:PUBLISH
-X-WR-CALNAME:${escapeICalText(orgName)} - Leave & Holiday Calendar
-X-WR-CALDESC:School holidays, term dates, and approved staff leave for ${escapeICalText(orgName)}
-X-WR-TIMEZONE:Europe/London
-${vtimezone}
-${events}END:VCALENDAR`;
+  lines.push('END:VCALENDAR');
 
-  return ical;
+  // RFC 5545 requires CRLF line endings throughout
+  return lines.join(CRLF) + CRLF;
 };
 
 /**
- * Generate Outlook subscription URL
- * Webcal protocol triggers Outlook add calendar dialog
- *
- * @param {string} baseUrl - Base URL of the app (e.g., https://gsg-leave-system.vercel.app)
- * @param {string} organizationId - Organization ID
- * @returns {object} URLs for different calendar apps
+ * Generate calendar subscription URLs
  */
 export const getCalendarSubscriptionUrls = (baseUrl, organizationId) => {
   const calendarUrl = `${baseUrl}/api/calendar?org=${organizationId}`;
   const webcalUrl = `webcal://${calendarUrl.replace('https://', '')}`;
 
   return {
-    ics: calendarUrl,           // Direct .ics file download
-    webcal: webcalUrl,          // Outlook/Apple Calendar subscription
+    ics: calendarUrl,
+    webcal: webcalUrl,
     google: `https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(calendarUrl)}`,
     outlook: `https://outlook.live.com/calendar/0/addevent?url=${encodeURIComponent(calendarUrl)}`
   };
