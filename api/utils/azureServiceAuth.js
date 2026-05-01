@@ -25,10 +25,11 @@ export async function getAzureServiceToken(organizationId, supabase) {
   }
 
   // Fetch organization's Azure credentials from Supabase
+  // Note: Postgres stores column names as lowercase, so we use lowercase keys
   const { data: org, error: fetchErr } = await supabase
     .from('organizations')
     .select(
-      'id, azureClientId, azureClientSecret, azureTenantId, ssoConfigured'
+      'id, azureclientid, azureclientsecret, azuretenantid, ssoconfigured'
     )
     .eq('id', organizationId)
     .single();
@@ -39,22 +40,22 @@ export async function getAzureServiceToken(organizationId, supabase) {
     );
   }
 
-  if (!org.ssoConfigured) {
+  if (!org.ssoconfigured) {
     throw new Error(
       `SSO not configured for organization ${organizationId}. Setup required before cron can sync.`
     );
   }
 
-  if (!org.azureClientId || !org.azureClientSecret || !org.azureTenantId) {
+  if (!org.azureclientid || !org.azureclientsecret || !org.azuretenantid) {
     throw new Error(
       `Azure AD credentials incomplete for organization ${organizationId}. ` +
-        `Required: azureClientId, azureClientSecret, azureTenantId in organizations table`
+        `Required: azureclientid, azureclientsecret, azuretenantid in organizations table`
     );
   }
 
   // Request token from Azure AD Token Endpoint
   // Uses Client Credentials flow: https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow
-  const tokenEndpoint = `https://login.microsoftonline.com/${org.azureTenantId}/oauth2/v2.0/token`;
+  const tokenEndpoint = `https://login.microsoftonline.com/${org.azuretenantid}/oauth2/v2.0/token`;
 
   const response = await fetch(tokenEndpoint, {
     method: 'POST',
@@ -62,8 +63,8 @@ export async function getAzureServiceToken(organizationId, supabase) {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
-      client_id: org.azureClientId,
-      client_secret: org.azureClientSecret,
+      client_id: org.azureclientid,
+      client_secret: org.azureclientsecret,
       scope: 'https://graph.microsoft.com/.default',
       grant_type: 'client_credentials',
     }).toString(),
@@ -133,16 +134,16 @@ export async function hasAzureCredentials(organizationId, supabase) {
   try {
     const { data: org } = await supabase
       .from('organizations')
-      .select('ssoConfigured, azureClientId, azureClientSecret, azureTenantId')
+      .select('ssoconfigured, azureclientid, azureclientsecret, azuretenantid')
       .eq('id', organizationId)
       .single();
 
     return !!(
       org &&
-      org.ssoConfigured &&
-      org.azureClientId &&
-      org.azureClientSecret &&
-      org.azureTenantId
+      org.ssoconfigured &&
+      org.azureclientid &&
+      org.azureclientsecret &&
+      org.azuretenantid
     );
   } catch (err) {
     return false;
@@ -159,12 +160,12 @@ export async function getConfiguredOrganizations(supabase) {
     const { data: orgs, error } = await supabase
       .from('organizations')
       .select(
-        'id, name, azureClientId, azureClientSecret, azureTenantId, notificationemail, ssoConfigured'
+        'id, name, azureclientid, azureclientsecret, azuretenantid, notificationemail, ssoconfigured'
       )
-      .eq('ssoConfigured', true)
-      .not('azureClientId', 'is', null)
-      .not('azureClientSecret', 'is', null)
-      .not('azureTenantId', 'is', null)
+      .eq('ssoconfigured', true)
+      .not('azureclientid', 'is', null)
+      .not('azureclientsecret', 'is', null)
+      .not('azuretenantid', 'is', null)
       .not('notificationemail', 'is', null);
 
     if (error) {

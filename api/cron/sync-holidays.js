@@ -159,8 +159,9 @@ async function getOrCreateSharedCalendar(organizationEmail, azureToken) {
  * Main cron handler - Syncs holidays for all configured organizations
  */
 export default async function handler(req, res) {
-  // Verify cron secret (Vercel sets x-vercel-cron-secret header for authenticated cron)
-  const cronSecret = req.headers['x-vercel-cron-secret'];
+  // Verify cron secret - Vercel sends: Authorization: Bearer <CRON_SECRET>
+  const authHeader = req.headers['authorization'];
+  const cronSecret = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   const expectedSecret = process.env.CRON_SECRET;
 
   if (expectedSecret && (!cronSecret || cronSecret !== expectedSecret)) {
