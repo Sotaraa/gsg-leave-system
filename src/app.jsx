@@ -8,6 +8,7 @@ import { useAuth } from './services/auth.js';
 import { setSupabaseSession, supabase } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
 import { createLeaveEvent, deleteLeaveEvent, syncHolidaysToSharedCalendar } from './services/graphCalendar.js';
+import { syncSingleHoliday, syncOrganizationHolidays } from './services/holidaySync.js';
 import {
   sendApprovalNotification,
   sendRejectionNotification,
@@ -957,9 +958,28 @@ const App = () => {
   const addTermDate = async () => {
     if (!newTermDate.date || !newTermDate.description) return;
     try {
-      await supabaseApi.termDatesApi.addTermDate(newTermDate, user.organization);
+      const created = await supabaseApi.termDatesApi.addTermDate(newTermDate, user.organization);
       addNotification("Date Added");
       setNewTermDate({ description: '', date: '', type: 'Term Start' });
+
+      // 📅 Real-time sync to Outlook calendar
+      if (created?.id && user.azureToken) {
+        const orgData = await supabase
+          .from('organizations')
+          .select('notificationemail')
+          .eq('id', user.organization)
+          .single();
+
+        if (orgData.data?.notificationemail) {
+          syncSingleHoliday(
+            created.id,
+            user.organization,
+            user.azureToken,
+            orgData.data.notificationemail,
+            'create'
+          ).catch(err => console.warn('Holiday sync optional:', err.message));
+        }
+      }
     } catch (error) {
       console.error('Error adding term date:', error);
       addNotification("Error adding date");
@@ -969,8 +989,30 @@ const App = () => {
   const deleteTermDate = async (id) => {
     if (confirm("Delete date?")) {
       try {
+        // Get holiday details for sync
+        const holiday = termDates.find(t => t.id === id);
+
         await supabaseApi.termDatesApi.deleteTermDate(id, user.organization);
         addNotification("Deleted");
+
+        // 📅 Real-time sync deletion to Outlook
+        if (holiday?.calendar_event_id && user.azureToken) {
+          const orgData = await supabase
+            .from('organizations')
+            .select('notificationemail')
+            .eq('id', user.organization)
+            .single();
+
+          if (orgData.data?.notificationemail) {
+            syncSingleHoliday(
+              id,
+              user.organization,
+              user.azureToken,
+              orgData.data.notificationemail,
+              'delete'
+            ).catch(err => console.warn('Holiday sync optional:', err.message));
+          }
+        }
       } catch (error) {
         console.error('Error deleting term date:', error);
         addNotification("Error deleting date");
