@@ -1,5 +1,6 @@
 import React from 'react';
-import { User, CheckSquare, Calendar, BarChart2, Settings, LogOut, Sparkles, Lock } from 'lucide-react';
+import { User, CheckSquare, Calendar, BarChart2, Settings, LogOut, Lock } from 'lucide-react';
+import LeaveHubLogo from './LeaveHubLogo.jsx';
 
 const Sidebar = ({ view, setView, myRole, onShowOnboarding, onLogout, userEmail }) => {
   const isAdmin = myRole === 'Admin';
@@ -31,11 +32,11 @@ const Sidebar = ({ view, setView, myRole, onShowOnboarding, onLogout, userEmail 
 
   return (
     <div className="sidebar">
-      <div className="sidebar-header">
-        <div>
-          <h2 className="font-bold flex items-center gap-2"><Sparkles size={20} /> LeaveHub</h2>
-          <p className="text-xs text-blue-200 mt-1">{myRole}</p>
-          <p className="text-xs text-blue-100 mt-2">{getPageDescription()}</p>
+      <div className="sidebar-header" style={{ height: 'auto', padding: '16px 20px 12px', flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+        <LeaveHubLogo width={170} />
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: '8px', width: '100%' }}>
+          <p className="text-xs font-semibold" style={{ color: 'rgba(180,210,255,0.9)', letterSpacing: '0.5px' }}>{myRole}</p>
+          <p className="text-xs" style={{ color: 'rgba(180,210,255,0.6)', marginTop: '2px' }}>{getPageDescription()}</p>
         </div>
       </div>
       <div className="sidebar-menu">
