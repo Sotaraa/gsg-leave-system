@@ -25,8 +25,14 @@
 import { getConfiguredOrganizations, getAzureServiceToken } from '../utils/azureServiceAuth.js';
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uzmdqryhzijkmwedvwka.supabase.co';
+// Use hardcoded Supabase URL (avoid environment variable issues on deployment)
+const SUPABASE_URL = 'https://uzmdqryhzijkmwedvwka.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Validate environment variables before creating client
+if (!SUPABASE_SERVICE_KEY) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is not set. Required for cron job to function.');
+}
 
 // Create Supabase client with service role key (full access, use sparingly)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
