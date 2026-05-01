@@ -1,45 +1,55 @@
 import React from 'react';
 
-const LeaveHubLogo = ({ width = 180, className = '' }) => (
-  <svg
-    width={width}
-    viewBox="0 0 180 52"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    aria-label="LeaveHub"
-  >
-    {/* Icon mark — overlapping rounded squares */}
-    <rect x="0" y="6" width="22" height="22" rx="5" fill="#4A9EDB" opacity="0.9" />
-    <rect x="8" y="14" width="22" height="22" rx="5" fill="#2176C7" opacity="0.85" />
-    {/* L letter inside icon */}
-    <text x="11" y="30" fontFamily="Inter, sans-serif" fontWeight="800" fontSize="13" fill="white" opacity="0.95">L</text>
+/**
+ * LeaveHub SVG Logo
+ * variant="light"  → white wordmark, for use on dark backgrounds (login screen)
+ * variant="dark"   → dark wordmark, for use on light backgrounds
+ * (default is "light" to match sidebar)
+ */
+const LeaveHubLogo = ({ width = 180, variant = 'light', className = '' }) => {
+  const isLight = variant !== 'dark';
+  const wordmarkColor   = isLight ? 'white'                    : '#001f4d';
+  const subtitleColor   = isLight ? 'rgba(180,210,255,0.65)'   : 'rgba(0,31,77,0.45)';
+  const iconA           = isLight ? '#4A9EDB'                  : '#2176C7';
+  const iconB           = isLight ? '#2176C7'                  : '#0052a3';
 
-    {/* LEAVEHUB wordmark */}
-    <text
-      x="38"
-      y="18"
-      fontFamily="Inter, 'Segoe UI', sans-serif"
-      fontWeight="700"
-      fontSize="8"
-      letterSpacing="2.5"
-      fill="rgba(180,210,255,0.75)"
-      textAnchor="start"
+  return (
+    <svg
+      width={width}
+      viewBox="0 0 200 54"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-label="LeaveHub"
+      role="img"
     >
-      POWERED BY SOTARA
-    </text>
-    <text
-      x="38"
-      y="34"
-      fontFamily="Inter, 'Segoe UI', sans-serif"
-      fontWeight="800"
-      fontSize="16"
-      letterSpacing="1.5"
-      fill="white"
-      textAnchor="start"
-    >
-      LEAVEHUB
-    </text>
-  </svg>
-);
+      {/* Icon mark — three overlapping rounded squares */}
+      <rect x="0"  y="4"  width="22" height="22" rx="5" fill={iconA} opacity="0.9" />
+      <rect x="8"  y="12" width="22" height="22" rx="5" fill={iconB} opacity="0.85" />
+      <rect x="16" y="20" width="16" height="16" rx="4" fill={iconA} opacity="0.75" />
+
+      {/* Wordmark */}
+      <text
+        x="46" y="17"
+        fontFamily="Inter, 'Segoe UI', sans-serif"
+        fontWeight="600"
+        fontSize="7.5"
+        letterSpacing="2"
+        fill={subtitleColor}
+      >
+        POWERED BY SOTARA
+      </text>
+      <text
+        x="46" y="34"
+        fontFamily="Inter, 'Segoe UI', sans-serif"
+        fontWeight="800"
+        fontSize="17"
+        letterSpacing="1.5"
+        fill={wordmarkColor}
+      >
+        LEAVEHUB
+      </text>
+    </svg>
+  );
+};
 
 export default LeaveHubLogo;
