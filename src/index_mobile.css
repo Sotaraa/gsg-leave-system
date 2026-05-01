@@ -32,7 +32,7 @@ body {
 
 /* ─── SIDEBAR — desktop ──────────────────────────────────────── */
 .sidebar {
-  width: 240px;
+  width: 268px;
   background: linear-gradient(180deg, #0A2847 0%, #071d35 100%);
   color: white;
   display: flex;
