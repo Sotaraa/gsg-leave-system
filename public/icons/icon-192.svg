@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="40" fill="#0052a3"/>
-  <rect x="28" y="28" width="62" height="62" rx="14" fill="#4A9EDB" opacity="0.9"/>
-  <rect x="52" y="52" width="62" height="62" rx="14" fill="#2176C7" opacity="0.85"/>
-  <rect x="102" y="102" width="62" height="62" rx="14" fill="#4A9EDB" opacity="0.9"/>
-  <text x="96" y="160" font-family="Inter, sans-serif" font-weight="800" font-size="22" fill="white" text-anchor="middle" letter-spacing="1">LEAVEHUB</text>
+  <rect width="192" height="192" rx="38" fill="#0A2847"/>
+  <!-- S mark (simplified Sotara icon) -->
+  <text x="96" y="108" font-family="Inter, Arial, sans-serif" font-weight="900" font-size="72" fill="#2DC4D4" text-anchor="middle" letter-spacing="-2">S</text>
+  <!-- Upward arrow accent -->
+  <line x1="118" y1="48" x2="148" y2="34" stroke="#2DC4D4" stroke-width="5" stroke-linecap="round"/>
+  <polygon points="140,28 149,34 143,42" fill="#2DC4D4"/>
 </svg>

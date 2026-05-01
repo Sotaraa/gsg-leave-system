@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, AlertCircle, CheckCircle, ChevronRight } from 'lucide-react';
 import { loginWithEntra } from '../services/entraAuth';
 import { supabase } from '../supabase';
-import LeaveHubLogo from './LeaveHubLogo.jsx';
+import SotaraLogo from './SotaraLogo.jsx';
 
 const LoginScreen = ({ error }) => {
   const [email, setEmail] = useState('');
@@ -64,7 +64,7 @@ const LoginScreen = ({ error }) => {
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #001f4d 0%, #0052a3 50%, #003d7a 100%)' }}
+      style={{ background: 'linear-gradient(160deg, #071d35 0%, #0A2847 55%, #0d3060 100%)' }}
     >
       {/* Background geometric shapes */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -99,13 +99,13 @@ const LoginScreen = ({ error }) => {
         }}>
 
           {/* Logo */}
-          <div className="flex justify-center mb-8">
-            <LeaveHubLogo width={200} variant="light" />
+          <div className="flex justify-center mb-2">
+            <SotaraLogo width={220} variant="teal" subtitle="LeaveHub" />
           </div>
 
           {/* Tagline */}
-          <p style={{ color: 'rgba(180,210,255,0.7)', fontSize: 13, textAlign: 'center', marginBottom: 32, letterSpacing: '0.3px' }}>
-            Staff leave management — secure, simple, multi-tenant
+          <p style={{ color: 'rgba(45,196,212,0.55)', fontSize: 12, textAlign: 'center', marginBottom: 28, letterSpacing: '0.5px', textTransform: 'uppercase', fontWeight: 600 }}>
+            Staff Leave Management Platform
           </p>
 
           {/* Microsoft Sign-In (Primary) */}
@@ -147,7 +147,7 @@ const LoginScreen = ({ error }) => {
               <>
                 {/* Microsoft Logo */}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6v-11.4H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" fill="#0052a3"/>
+                  <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6v-11.4H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" fill="#0A2847"/>
                 </svg>
                 <span>Sign in with Microsoft 365</span>
               </>
