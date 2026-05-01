@@ -18,12 +18,24 @@ const Sidebar = ({ view, setView, myRole, onShowOnboarding, onLogout, userEmail 
     }
   };
 
+  const getPageDescription = () => {
+    const descriptions = {
+      employee: 'Submit and track your leave requests',
+      'dept-head': 'Review and approve leave requests',
+      calendar: 'View all leave dates and holidays',
+      analytics: 'View department and leave analytics',
+      admin: 'Manage staff, settings, and system data'
+    };
+    return descriptions[view] || '';
+  };
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <div>
-          <h2 className="font-bold flex items-center gap-2"><Sparkles size={20} /> Sotara LeaveHub</h2>
+          <h2 className="font-bold flex items-center gap-2"><Sparkles size={20} /> LeaveHub</h2>
           <p className="text-xs text-blue-200 mt-1">{myRole}</p>
+          <p className="text-xs text-blue-100 mt-2">{getPageDescription()}</p>
         </div>
       </div>
       <div className="sidebar-menu">

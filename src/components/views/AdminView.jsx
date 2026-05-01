@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { Trash2, Edit2, Archive, RotateCcw, Download, Upload, AlertCircle, CheckCircle2,
-         Users, ClipboardList, Settings as SettingsIcon, Database, Calendar } from 'lucide-react';
+         Users, ClipboardList, Settings as SettingsIcon, Database } from 'lucide-react';
 import CONFIG from '../../config.js';
 import { formatDateUK, getTermForDate } from '../../utils/helpers.js';
 import { TypeNote } from './EmployeeView.jsx';
-import CalendarSubscription from '../CalendarSubscription.jsx';
-import StaffCalendarToken from '../StaffCalendarToken.jsx';
 
 const AdminView = ({
   staffList, requests, departments, termDates, announcements,
@@ -104,7 +102,6 @@ const AdminView = ({
   const TABS = [
     { key: 'staff',    label: 'Manage Staff',  Icon: Users         },
     { key: 'requests', label: 'Requests',       Icon: ClipboardList },
-    { key: 'calendar', label: 'Calendar',       Icon: Calendar      },
     { key: 'settings', label: 'Settings',       Icon: SettingsIcon  },
     { key: 'data',     label: 'Data & Import',  Icon: Database      },
   ];
@@ -806,40 +803,6 @@ const AdminView = ({
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    )}
-
-    {/* ════ CALENDAR TAB ════ */}
-    {adminTab === 'calendar' && (
-      <div className="space-y-6">
-        {/* Admin Calendar Subscriptions */}
-        <div>
-          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <Calendar size={20} />
-            Admin Calendar (All Leave)
-          </h3>
-          <CalendarSubscription organizationId={organizationId} organizationName={organizationName} />
-        </div>
-
-        {/* Staff Calendar Access */}
-        <div>
-          <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-            <Calendar size={20} />
-            Staff Calendar (Shared with Team)
-          </h3>
-          {supabase && user ? (
-            <StaffCalendarToken
-              organizationId={organizationId}
-              organizationName={organizationName}
-              supabase={supabase}
-              user={user}
-            />
-          ) : (
-            <div className="card p-4 bg-amber-50 border border-amber-200">
-              <p className="text-sm text-amber-700">Staff calendar access requires Supabase connection</p>
-            </div>
-          )}
         </div>
       </div>
     )}
