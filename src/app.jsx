@@ -7,7 +7,7 @@ import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail }
 import { useAuth } from './services/auth.js';
 import { setSupabaseSession, supabase } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
-import { createLeaveEvent, deleteLeaveEvent } from './services/graphCalendar.js';
+import { createLeaveEvent, deleteLeaveEvent, syncHolidaysToSharedCalendar } from './services/graphCalendar.js';
 import {
   sendApprovalNotification,
   sendRejectionNotification,
@@ -230,6 +230,25 @@ const App = () => {
         const settings = await supabaseApi.settingsApi.getSettings(orgId);
         if (!isUnmounting) {
           setSystemSettings(prev => ({ ...prev, ...settings }));
+        }
+
+        // 📅 Sync holidays to shared Outlook calendar (runs once on app load)
+        if (user?.azureToken) {
+          // Fetch organization to get notification email
+          const { data: orgData } = await supabase
+            .from('organizations')
+            .select('notificationemail')
+            .eq('id', orgId)
+            .single();
+
+          if (orgData?.notificationemail) {
+            syncHolidaysToSharedCalendar(
+              orgData.notificationemail,
+              termDatesList,
+              schoolTermsList,
+              user.azureToken
+            ).catch(err => console.warn('Holiday sync optional - skipped:', err.message));
+          }
         }
 
         setIsLoading(false);

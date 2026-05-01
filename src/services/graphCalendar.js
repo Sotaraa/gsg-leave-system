@@ -266,6 +266,158 @@ export const getOrCreateSharedCalendar = async (
 };
 
 /**
+ * Sync all holidays and term dates to the shared calendar
+ * @param {string} organizationEmail - Organization email
+ * @param {array} termDates - Term date events from database
+ * @param {array} schoolTerms - School term definitions from database
+ * @param {string} azureToken - Microsoft Graph API token
+ */
+export const syncHolidaysToSharedCalendar = async (
+  organizationEmail,
+  termDates = [],
+  schoolTerms = [],
+  azureToken
+) => {
+  if (!azureToken) {
+    console.log('⏭️ Skipping holiday sync - no Azure token');
+    return { success: false, reason: 'No token' };
+  }
+
+  try {
+    // Get or create shared calendar
+    const calResult = await getOrCreateSharedCalendar(
+      organizationEmail,
+      'School Holidays',
+      azureToken
+    );
+
+    if (!calResult.success) {
+      console.warn('⚠️ Could not sync holidays - calendar unavailable');
+      return { success: false, reason: 'Calendar not found' };
+    }
+
+    const calendarId = calResult.calendar.id;
+    const createdCount = { holidays: 0, terms: 0 };
+
+    // Sync term dates (holidays, school breaks)
+    if (termDates && termDates.length > 0) {
+      for (const td of termDates) {
+        // Skip bank holidays - they're less important for shared calendar
+        if (td.type === 'Bank Holiday') continue;
+
+        const eventBody = {
+          subject: `🏫 ${td.description || td.type}`,
+          body: {
+            contentType: 'HTML',
+            content: `<p><strong>${td.description || td.type}</strong></p>`,
+          },
+          start: {
+            dateTime: new Date(td.date).toISOString(),
+            timeZone: 'Europe/London',
+          },
+          end: {
+            dateTime: new Date(new Date(td.date).getTime() + 86400000).toISOString(),
+            timeZone: 'Europe/London',
+          },
+          isAllDay: true,
+          isReminderOn: false,
+          categories: ['Holiday', 'SchoolCalendar'],
+          showAs: 'free',
+        };
+
+        try {
+          const response = await fetch(
+            `https://graph.microsoft.com/v1.0/users/${organizationEmail}/calendars/${calendarId}/events`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${azureToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(eventBody),
+            }
+          );
+
+          if (response.ok || response.status === 409) {
+            // 409 = conflict (event likely already exists)
+            createdCount.holidays++;
+          }
+        } catch (err) {
+          console.warn(`⚠️ Failed to add holiday event: ${td.description}`);
+        }
+      }
+    }
+
+    // Sync school terms
+    if (schoolTerms && schoolTerms.length > 0) {
+      for (const term of schoolTerms) {
+        const periods = [
+          { name: 'Autumn', start: term.autumnStart, end: term.autumnEnd },
+          { name: 'Spring', start: term.springStart, end: term.springEnd },
+          { name: 'Summer', start: term.summerStart, end: term.summerEnd },
+        ];
+
+        for (const period of periods) {
+          if (!period.start || !period.end) continue;
+
+          const eventBody = {
+            subject: `📚 ${period.name} Term (${term.academicYear})`,
+            body: {
+              contentType: 'HTML',
+              content: `<p><strong>${period.name} Term</strong></p><p>${term.academicYear}</p>`,
+            },
+            start: {
+              dateTime: new Date(period.start).toISOString(),
+              timeZone: 'Europe/London',
+            },
+            end: {
+              dateTime: new Date(new Date(period.end).getTime() + 86400000).toISOString(),
+              timeZone: 'Europe/London',
+            },
+            isAllDay: true,
+            isReminderOn: false,
+            categories: ['SchoolTerm'],
+            showAs: 'free',
+          };
+
+          try {
+            const response = await fetch(
+              `https://graph.microsoft.com/v1.0/users/${organizationEmail}/calendars/${calendarId}/events`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${azureToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(eventBody),
+              }
+            );
+
+            if (response.ok || response.status === 409) {
+              createdCount.terms++;
+            }
+          } catch (err) {
+            console.warn(`⚠️ Failed to add term event: ${period.name}`);
+          }
+        }
+      }
+    }
+
+    console.log(
+      `✅ Holiday calendar synced: ${createdCount.holidays} holidays, ${createdCount.terms} terms`
+    );
+    return {
+      success: true,
+      calendar: calResult.calendar,
+      events: createdCount,
+    };
+  } catch (err) {
+    console.error('Holiday sync error:', err);
+    return { success: false, reason: err.message };
+  }
+};
+
+/**
  * Share calendar with user (for future use)
  * @param {string} organizationEmail - Organization email
  * @param {string} calendarId - Calendar ID
