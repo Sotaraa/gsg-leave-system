@@ -1,8 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
   <rect width="192" height="192" rx="38" fill="#0A2847"/>
-  <!-- S mark -->
   <text x="96" y="108" font-family="Inter, Arial, sans-serif" font-weight="900" font-size="72" fill="#2DC4D4" text-anchor="middle" letter-spacing="-2">S</text>
-  <!-- Upward arrow accent -->
-  <line x1="118" y1="48" x2="148" y2="34" stroke="#2DC4D4" stroke-width="5" stroke-linecap="round"/>
-  <polygon points="140,28 149,34 143,42" fill="#2DC4D4"/>
 </svg>

@@ -1,14 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!--
-    Sotara favicon — S mark on navy
-    Works at 16×16, 32×32, 48×48, 64×64
-    Navy: #0A2847   Teal: #2DC4D4
-  -->
-
-  <!-- Navy rounded-square background -->
   <rect width="64" height="64" rx="13" fill="#0A2847"/>
-
-  <!-- S -->
   <text x="32" y="46"
         font-family="Inter, Arial, sans-serif"
         font-weight="900"
@@ -16,9 +7,4 @@
         fill="#2DC4D4"
         text-anchor="middle"
         letter-spacing="-1">S</text>
-
-  <!-- Upward arrow accent (top-right) -->
-  <line x1="46" y1="14" x2="57" y2="8"
-        stroke="#2DC4D4" stroke-width="3.5" stroke-linecap="round"/>
-  <polygon points="53,5 58,8 54,13" fill="#2DC4D4"/>
 </svg>
