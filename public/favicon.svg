@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <!--
-    Sotara favicon — arrow-A brand mark on navy
+    Sotara favicon — S mark on navy
     Works at 16×16, 32×32, 48×48, 64×64
     Navy: #0A2847   Teal: #2DC4D4
   -->
@@ -8,24 +8,17 @@
   <!-- Navy rounded-square background -->
   <rect width="64" height="64" rx="13" fill="#0A2847"/>
 
-  <!-- A: left leg (foot → apex) -->
-  <line x1="12" y1="53" x2="28" y2="11"
-        stroke="#2DC4D4" stroke-width="5.5" stroke-linecap="round"/>
+  <!-- S -->
+  <text x="32" y="46"
+        font-family="Inter, Arial, sans-serif"
+        font-weight="900"
+        font-size="42"
+        fill="#2DC4D4"
+        text-anchor="middle"
+        letter-spacing="-1">S</text>
 
-  <!-- A: crossbar -->
-  <line x1="16" y1="34" x2="40" y2="34"
-        stroke="#2DC4D4" stroke-width="4.5" stroke-linecap="round"/>
-
-  <!--
-    Arrow: starts at A's right foot, rises straight up,
-    sweeps upper-right — same motion as the Sotara wordmark
-    M(43,53) C(43,26)(53,16)(57,10)
-      start direction : straight up  ✓
-      end direction   : ~37° above horizontal ✓
-  -->
-  <path d="M 43 53 C 43 26, 53 16, 57 10"
-        stroke="#2DC4D4" stroke-width="5.5" fill="none" stroke-linecap="round"/>
-
-  <!-- Arrowhead at (57,10), pointing ~37° above horizontal -->
-  <polygon points="57,10 50,19 55,23" fill="#2DC4D4"/>
+  <!-- Upward arrow accent (top-right) -->
+  <line x1="46" y1="14" x2="57" y2="8"
+        stroke="#2DC4D4" stroke-width="3.5" stroke-linecap="round"/>
+  <polygon points="53,5 58,8 54,13" fill="#2DC4D4"/>
 </svg>
