@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 /* ── Sotara brand tokens ──────────────────────────────────────────
    navy-dark  #071d35   sidebar shadow / deepest bg
@@ -32,7 +32,7 @@ body {
 
 /* ─── SIDEBAR — desktop ──────────────────────────────────────── */
 .sidebar {
-  width: 268px;
+  width: 310px;
   background: linear-gradient(180deg, #0A2847 0%, #071d35 100%);
   color: white;
   display: flex;
