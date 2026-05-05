@@ -1,8 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="38" fill="#0A2847"/>
-  <!-- S mark (simplified Sotara icon) -->
-  <text x="96" y="108" font-family="Inter, Arial, sans-serif" font-weight="900" font-size="72" fill="#2DC4D4" text-anchor="middle" letter-spacing="-2">S</text>
-  <!-- Upward arrow accent -->
-  <line x1="118" y1="48" x2="148" y2="34" stroke="#2DC4D4" stroke-width="5" stroke-linecap="round"/>
-  <polygon points="140,28 149,34 143,42" fill="#2DC4D4"/>
+  <!--
+    Sotara PWA icon 192×192 — arrow-A brand mark on navy
+    Scaled ×3 from 64×64 favicon master
+    Navy: #0A2847   Teal: #2DC4D4
+  -->
+
+  <!-- Navy rounded-square background -->
+  <rect width="192" height="192" rx="39" fill="#0A2847"/>
+
+  <!-- A: left leg (foot → apex) -->
+  <line x1="36" y1="159" x2="84" y2="33"
+        stroke="#2DC4D4" stroke-width="16.5" stroke-linecap="round"/>
+
+  <!-- A: crossbar -->
+  <line x1="48" y1="102" x2="120" y2="102"
+        stroke="#2DC4D4" stroke-width="13.5" stroke-linecap="round"/>
+
+  <!-- Arrow: rises from A's right foot, sweeps upper-right -->
+  <path d="M 129 159 C 129 78, 159 48, 171 30"
+        stroke="#2DC4D4" stroke-width="16.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Arrowhead at (171,30) -->
+  <polygon points="171,30 150,57 165,69" fill="#2DC4D4"/>
 </svg>
