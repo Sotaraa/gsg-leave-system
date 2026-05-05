@@ -1,115 +1,137 @@
 import React from 'react';
 
 /**
- * SotaraLogo — faithful SVG recreation of the Sotara brand mark
+ * SotaraLogo — precise SVG recreation of the Sotara wordmark
  *
- * Props:
- *   width        — rendered width (height scales proportionally)
- *   variant      — 'teal' (default, teal text on transparent)
- *                  'white' (white text, for use on very dark backgrounds)
- *                  'dark'  (navy text, for use on light backgrounds)
- *   showBadge    — wrap in the dark-navy pill/badge (like the source logo)
- *   subtitle     — optional subtitle beneath the mark (e.g. "LEAVEHUB")
+ * "SOTAR" in Nunito Black (forced width)  +  custom "A" with the
+ * Sotara upward-right arrow — the brand signature.
+ *
+ * Props
+ *   width     — rendered px width (height ≈ 20% of width)
+ *   variant   — 'teal' | 'white' | 'dark'
+ *   subtitle  — label below, e.g. "LEAVEHUB"
+ *   className — extra CSS classes
+ *
+ * ── SVG coordinate system  viewBox "0 0 510 92" ──────────────────
+ *  baseline  y = 84     cap-top  y = 5     cap-height = 79 u
+ *
+ *  "SOTAR"  textLength = 295  →  x 0 … 295  (1 letter ≈ 59 u)
+ *
+ *  Custom "A"  (one letter wide, x 296 … 355):
+ *    left leg  : (296,84) → (323,5)     diagonal foot → apex
+ *    crossbar  : (307,52) → (375,52)    at ~40% height, bridges to arrow
+ *    arrow     : M(355,84) C(355,35)(474,15)(490,3)
+ *                  C1 straight-up  →  C2 sets 37° exit ✓
+ *    arrowhead : "490,3  478,23  468,11"
+ *
+ * Stroke-width = 10 u  ≡  ~4.3 px at 220 px render  ≡  Nunito Black weight ✓
+ * ──────────────────────────────────────────────────────────────────
  */
 const SotaraLogo = ({
-  width = 180,
-  variant = 'teal',
-  showBadge = false,
+  width    = 200,
+  variant  = 'teal',
   subtitle = '',
   className = '',
 }) => {
-  const teal   = '#2DC4D4';
-  const navy   = '#0A2847';
+  const teal = '#2DC4D4';
+  const navy = '#0A2847';
 
-  const textColor = variant === 'white' ? '#ffffff'
-    : variant === 'dark'  ? navy
-    : teal;
+  const fill =
+    variant === 'white' ? '#ffffff' :
+    variant === 'dark'  ? navy      :
+    teal;
 
-  const subColor = variant === 'dark'
-    ? 'rgba(10,40,71,0.45)'
-    : 'rgba(45,196,212,0.6)';
-
-  // ViewBox: 260 wide × 52 tall (no subtitle), or 260 × 72 (with subtitle)
-  const vbH = subtitle ? 72 : 52;
+  const subFill =
+    variant === 'dark'
+      ? 'rgba(10,40,71,0.5)'
+      : 'rgba(45,196,212,0.65)';
 
   return (
-    <svg
-      width={width}
-      viewBox={`0 0 260 ${vbH}`}
-      xmlns="http://www.w3.org/2000/svg"
+    <div
       className={className}
-      aria-label={subtitle ? `Sotara ${subtitle}` : 'Sotara'}
-      role="img"
+      style={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        lineHeight: 1,
+        userSelect: 'none',
+      }}
     >
-      {showBadge && (
-        <rect x="0" y="0" width="260" height={vbH} rx="10" fill={navy} />
-      )}
-
-      {/* ── "SOTAR" wordmark ── */}
-      <text
-        x={showBadge ? 14 : 0}
-        y="44"
-        fontFamily="Inter, 'Segoe UI', Arial, sans-serif"
-        fontWeight="900"
-        fontSize="48"
-        letterSpacing="-1"
-        fill={textColor}
+      {/* ══ Wordmark SVG ══════════════════════════════════════════ */}
+      <svg
+        width={width}
+        viewBox="0 0 510 92"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block', overflow: 'visible' }}
+        aria-label={subtitle ? `Sotara ${subtitle}` : 'Sotara'}
+        role="img"
       >
-        SOTAR
-      </text>
+        {/* ── "SOTAR" — Nunito Black, forced to exactly 295 units ── */}
+        <text
+          x="0"
+          y="84"
+          fontFamily="'Nunito', 'Poppins', 'Inter', sans-serif"
+          fontWeight="900"
+          fontSize="84"
+          fill={fill}
+          textLength="295"
+          lengthAdjust="spacingAndGlyphs"
+        >
+          SOTAR
+        </text>
 
-      {/*
-        ── Stylised "A↗" ──
-        Left leg:  (192,44) → (210,4)
-        Right leg: (228,44) → (210,4)
-        Crossbar:  (199,28) → (221,28)
-        Arrow shaft from apex: (210,4) → (244,0) — goes up-right
-        Arrowhead at tip
-      */}
-      {(() => {
-        const ox = showBadge ? 14 : 0; // horizontal offset when badge shown
-        const lx = 192 + ox;           // left leg base x
-        const ax = 210 + ox;           // apex x
-        const rx = 228 + ox;           // right leg base x
-        const arrowTipX = 248 + ox;
-        return (
-          <g>
-            {/* Left leg */}
-            <line x1={lx} y1="44" x2={ax} y2="4"
-              stroke={textColor} strokeWidth="7.5" strokeLinecap="round" />
-            {/* Right leg */}
-            <line x1={rx} y1="44" x2={ax} y2="4"
-              stroke={textColor} strokeWidth="7.5" strokeLinecap="round" />
-            {/* Crossbar */}
-            <line x1={lx + 8} y1="28" x2={rx - 8} y2="28"
-              stroke={textColor} strokeWidth="5.5" strokeLinecap="round" />
-            {/* Arrow shaft from apex going upper-right */}
-            <line x1={ax} y1="4" x2={arrowTipX} y2="0"
-              stroke={textColor} strokeWidth="5" strokeLinecap="round" />
-            {/* Arrowhead */}
-            <polygon
-              points={`${arrowTipX - 8},0 ${arrowTipX},0 ${arrowTipX},8`}
-              fill={textColor}
-            />
-          </g>
-        );
-      })()}
+        {/* ── A: left leg — diagonal from right foot to apex ── */}
+        <line
+          x1="296" y1="84"
+          x2="323"  y2="5"
+          stroke={fill} strokeWidth="10" strokeLinecap="round"
+        />
+
+        {/* ── A: crossbar — bridges left-leg to where arrow passes ── */}
+        <line
+          x1="307" y1="52"
+          x2="375" y2="52"
+          stroke={fill} strokeWidth="8" strokeLinecap="round"
+        />
+
+        {/*
+          ── Arrow ───────────────────────────────────────────────────
+          M(355,84)  — A right foot
+          C(355,35)  — control 1: rises straight up (dx=0, dy=-49)
+           (474,15)  — control 2: sets ~37° exit angle
+          (490,3)    — arrow tip
+
+          Verified:
+            start direction : straight up          ✓
+            end direction   : atan(12/16) = 36.9°  ✓
+            midpoint t=0.5  : (417, 30)  — above crossbar, below cap ✓
+        ─────────────────────────────────────────────────────────── */}
+        <path
+          d="M 355 84 C 355 35, 474 15, 490 3"
+          stroke={fill} strokeWidth="10" fill="none"
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+
+        {/* ── Arrowhead — tip at (490,3), pointing 37° above horiz ── */}
+        <polygon points="490,3 478,23 468,11" fill={fill} />
+      </svg>
 
       {/* ── Optional subtitle (e.g. "LEAVEHUB") ── */}
       {subtitle && (
-        <text
-          x={showBadge ? 14 : 0}
-          y="65"
-          fontFamily="Inter, 'Segoe UI', Arial, sans-serif"
-          fontWeight="700"
-          fontSize="13"
-          letterSpacing="3"
-          fill={subColor}
-        >
-          {subtitle.toUpperCase()}
-        </text>
+        <span style={{
+          fontFamily: "'Nunito', 'Inter', sans-serif",
+          fontWeight: 700,
+          fontSize: Math.max(8, Math.round(width * 0.063)),
+          color: subFill,
+          letterSpacing: '0.22em',
+          textTransform: 'uppercase',
+          display: 'block',
+          marginTop: Math.round(width * 0.038),
+        }}>
+          {subtitle}
+        </span>
       )}
-    </svg>
+    </div>
   );
 };
 
