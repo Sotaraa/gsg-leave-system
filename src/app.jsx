@@ -880,13 +880,37 @@ const App = () => {
   };
 
   const searchDirectory = async (query) => {
-    if (!query || query.length < 3) return;
+    if (!query || query.length < 2) return;
     if (!graphToken) return alert("Please re-login to search directory");
     setIsSearching(true);
     try {
-      const response = await fetch(`https://graph.microsoft.com/v1.0/users?$filter=startswith(displayName,'${query}')&$select=displayName,mail,department,jobTitle&$top=5`, { headers: { Authorization: `Bearer ${graphToken}` } });
-      const data = await response.json();
-      setSearchResults(data.value || []);
+      // /me/people searches the GAL using People.Read (no admin consent needed).
+      // Fallback to /users $search if people returns nothing.
+      const peopleRes = await fetch(
+        `https://graph.microsoft.com/v1.0/me/people?$search="${encodeURIComponent(query)}"&$select=displayName,scoredEmailAddresses,department,jobTitle&$top=8`,
+        { headers: { Authorization: `Bearer ${graphToken}` } }
+      );
+      const peopleData = await peopleRes.json();
+      const people = (peopleData.value || [])
+        .filter(p => p.scoredEmailAddresses?.[0]?.address)
+        .map(p => ({
+          displayName: p.displayName,
+          mail: p.scoredEmailAddresses[0].address,
+          department: p.department || '',
+          jobTitle: p.jobTitle || '',
+        }));
+
+      if (people.length > 0) {
+        setSearchResults(people);
+      } else {
+        // Fallback: search /users with $search (requires ConsistencyLevel header)
+        const usersRes = await fetch(
+          `https://graph.microsoft.com/v1.0/users?$search="displayName:${encodeURIComponent(query)}"&$select=displayName,mail,department,jobTitle&$top=8`,
+          { headers: { Authorization: `Bearer ${graphToken}`, ConsistencyLevel: 'eventual' } }
+        );
+        const usersData = await usersRes.json();
+        setSearchResults(usersData.value || []);
+      }
     } catch { setSearchResults([]); }
     setIsSearching(false);
   };

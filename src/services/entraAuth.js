@@ -41,7 +41,7 @@ const msalConfig = {
 
 const scopes = {
   loginRequest: {
-    scopes: ['openid', 'profile', 'email', 'User.Read', 'Mail.Send'],
+    scopes: ['openid', 'profile', 'email', 'User.Read', 'Mail.Send', 'People.Read'],
     prompt: 'select_account', // Force organization/account selection for multi-tenant
   },
 };
