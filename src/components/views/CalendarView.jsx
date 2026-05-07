@@ -3,6 +3,23 @@ import { Calendar, ChevronLeft, ChevronRight, Info, Trash2, Clock, X } from 'luc
 import CONFIG from '../../config.js';
 import { formatDateUK, getTermForDate } from '../../utils/helpers.js';
 
+// ── Leave type colour map ────────────────────────────────────────────────────
+// Returns { bg, bar, pill } Tailwind classes for each leave type.
+const LEAVE_COLOURS = {
+  'Annual Leave':          { bg: 'bg-emerald-600',  bar: 'bg-emerald-500',  pill: 'bg-emerald-50  border-emerald-200 text-emerald-900' },
+  'Sick Leave':            { bg: 'bg-rose-500',      bar: 'bg-rose-500',     pill: 'bg-rose-50     border-rose-200    text-rose-900'    },
+  'Medical Appt':          { bg: 'bg-blue-500',      bar: 'bg-blue-500',     pill: 'bg-blue-50     border-blue-200    text-blue-900'    },
+  'Compassionate':         { bg: 'bg-violet-500',    bar: 'bg-violet-500',   pill: 'bg-violet-50   border-violet-200  text-violet-900'  },
+  'CPD':                   { bg: 'bg-amber-500',     bar: 'bg-amber-500',    pill: 'bg-amber-50    border-amber-200   text-amber-900'   },
+  'Unpaid':                { bg: 'bg-gray-400',      bar: 'bg-gray-400',     pill: 'bg-gray-50     border-gray-200    text-gray-700'    },
+  'Time Off in Lieu':      { bg: 'bg-cyan-600',      bar: 'bg-cyan-500',     pill: 'bg-cyan-50     border-cyan-200    text-cyan-900'    },
+  'Extra Hours Worked':    { bg: 'bg-indigo-500',    bar: 'bg-indigo-500',   pill: 'bg-indigo-50   border-indigo-200  text-indigo-900'  },
+  'School Holiday Worked': { bg: 'bg-indigo-600',    bar: 'bg-indigo-600',   pill: 'bg-indigo-50   border-indigo-200  text-indigo-900'  },
+  'Term Time Leave':       { bg: 'bg-orange-500',    bar: 'bg-orange-500',   pill: 'bg-orange-50   border-orange-200  text-orange-900'  },
+};
+const defaultColour = { bg: 'bg-emerald-600', bar: 'bg-emerald-500', pill: 'bg-emerald-50 border-emerald-200 text-emerald-900' };
+const leaveColour = (type) => LEAVE_COLOURS[type] || defaultColour;
+
 const CalendarView = ({
   calDate, setCalDate, calViewMode, setCalViewMode,
   selectedDate, setSelectedDate, requests, staffList,
@@ -142,7 +159,7 @@ const CalendarView = ({
                       {bankHols.map((h, idx) => <div key={`h-${idx}`} className="cal-event bank truncate">{h.description}</div>)}
                       {dayTerms.map((t, idx) => <div key={`t-${idx}`} className="cal-event inset truncate">{t.description}</div>)}
                       {dayRequests.slice(0, 2).map((r, idx) => (
-                        <div key={`r-${idx}`} className={`cal-event text-[9px] truncate px-1 py-0.5 rounded shadow-sm text-white ${r.type === CONFIG.termTimeWorkType ? 'bg-indigo-600' : 'bg-emerald-600'}`}>
+                        <div key={`r-${idx}`} className={`cal-event text-[9px] truncate px-1 py-0.5 rounded shadow-sm text-white ${leaveColour(r.type).bg}`}>
                           {r.employeeName}
                         </div>
                       ))}
@@ -212,25 +229,27 @@ const CalendarView = ({
 
                   {/* Staff Requests */}
                   {requests.filter(r => r.status === 'Approved' && r.startDate <= selectedDate && (r.endDate || r.startDate) >= selectedDate)
-                    .map((r, idx) => (
-                    <div key={idx} className="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                      <div className={`w-1.5 h-12 rounded-full shrink-0 ${r.type === CONFIG.termTimeWorkType ? 'bg-indigo-500' : 'bg-emerald-500'}`}></div>
+                    .map((r, idx) => {
+                      const col = leaveColour(r.type);
+                      return (
+                    <div key={idx} className={`flex items-center gap-4 p-4 border rounded-xl shadow-sm hover:shadow-md transition-shadow ${col.pill}`}>
+                      <div className={`w-1.5 h-12 rounded-full shrink-0 ${col.bar}`}></div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-slate-900 truncate">{r.employeeName}</p>
-                        <p className="text-xs text-slate-500 font-semibold">{r.department}</p>
-                        <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-bold">{r.type}</p>
+                        <p className="font-bold truncate">{r.employeeName}</p>
+                        <p className="text-xs font-semibold opacity-70">{r.department}</p>
+                        <p className="text-[10px] mt-1 uppercase tracking-wider font-bold opacity-60">{r.type}</p>
                       </div>
                       {isAdmin && (
-                        <button 
-                          onClick={() => deleteRequest(r.id)} 
-                          className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        <button
+                          onClick={() => deleteRequest(r.id)}
+                          className="p-2 opacity-40 hover:opacity-100 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                           title="Delete Request"
                         >
                           <Trash2 size={18}/>
                         </button>
                       )}
                     </div>
-                  ))}
+                  )})}
 
                   {/* Empty State */}
                   {requests.filter(r => r.status === 'Approved' && r.startDate <= selectedDate && (r.endDate || r.startDate) >= selectedDate).length === 0 && bankHolidays.filter(h => h.date === selectedDate).length === 0 && (
