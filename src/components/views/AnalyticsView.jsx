@@ -3,11 +3,165 @@ import {
   BarChart2, AlertTriangle, CheckCircle2, X, Activity,
   CalendarDays, Stethoscope, GraduationCap, Heart, ShieldCheck,
   Ban, Coffee, Briefcase, BookOpen, School, ChevronRight,
-  AlertCircle, TrendingDown, User, Users, Building2, CalendarRange, Clock
+  AlertCircle, TrendingDown, User, Users, Building2, CalendarRange, Clock,
+  Download, FileText, Filter
 } from 'lucide-react';
 import { formatDateUK } from '../../utils/helpers.js';
 import CONFIG from '../../config.js';
 import { TypeBadge, getColor, getMeta } from './EmployeeView.jsx';
+
+/* ── CSV download helper ───────────────────────────────────── */
+const downloadCSV = (filename, rows) => {
+  const csv = rows.map(row => row.map(cell => {
+    const s = cell == null ? '' : String(cell);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+/* ── Print-to-PDF helper for individual staff report ───────── */
+const printIndividualReport = (person, holidayYearLabel, isAdmin) => {
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) {
+    alert('Please allow pop-ups for this site to download the report.');
+    return;
+  }
+
+  const band = person.bradford === 0 ? 'None'
+    : person.bradford < 50 ? 'Low'
+    : person.bradford < 125 ? 'Medium' : 'High';
+
+  const breakdownRows = Object.entries(person.breakdown || {})
+    .filter(([, d]) => d > 0)
+    .sort(([, a], [, b]) => b - a)
+    .map(([type, days]) => `<tr><td>${type}</td><td style="text-align:right">${days}d</td></tr>`)
+    .join('') || '<tr><td colspan="2" style="color:#999;font-style:italic">No leave recorded this year</td></tr>';
+
+  const sortedReqs = [...(person.userRequests || [])].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  const sickSpells = sortedReqs.filter(r => r.type === 'Sick Leave');
+  const annualSpells = sortedReqs.filter(r => r.type === 'Annual Leave');
+
+  const sickRows = sickSpells.length === 0 ? '<tr><td colspan="3" style="color:#999;font-style:italic">None</td></tr>'
+    : sickSpells.map((r, i) => `
+        <tr>
+          <td>#${i + 1}</td>
+          <td>${formatDateUK(r.startDate)}${r.endDate && r.endDate !== r.startDate ? ' — ' + formatDateUK(r.endDate) : ''}</td>
+          <td style="text-align:right">${r.daysCount}d</td>
+          ${isAdmin ? `<td style="font-style:italic;color:#666">${r.sickReason || '—'}</td>` : ''}
+        </tr>`).join('');
+
+  const annualRows = annualSpells.length === 0 ? '<tr><td colspan="2" style="color:#999;font-style:italic">None</td></tr>'
+    : annualSpells.map(r => `
+        <tr>
+          <td>${formatDateUK(r.startDate)}${r.endDate && r.endDate !== r.startDate ? ' — ' + formatDateUK(r.endDate) : ''}</td>
+          <td style="text-align:right">${r.daysCount}d</td>
+        </tr>`).join('');
+
+  const monthKeys = Object.keys(person.monthlyBreakdown || {}).sort();
+  const monthlyHtml = monthKeys.length === 0 ? '<p style="color:#999;font-style:italic">No monthly activity</p>'
+    : `<table>
+        <thead><tr><th>Month</th><th style="text-align:right">Total</th><th>Breakdown</th></tr></thead>
+        <tbody>${monthKeys.map(m => {
+          const data = person.monthlyBreakdown[m];
+          const total = Object.values(data).reduce((s, d) => s + d, 0);
+          const breakdown = Object.entries(data).map(([t, d]) => `${t}: ${d}d`).join(', ');
+          const d = new Date(m + '-01');
+          return `<tr><td>${d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</td><td style="text-align:right"><strong>${total}d</strong></td><td style="font-size:11px;color:#555">${breakdown}</td></tr>`;
+        }).join('')}</tbody>
+      </table>`;
+
+  const balanceHtml = !person.isTermTime ? `
+    <div class="card">
+      <h3>Annual Leave Balance</h3>
+      <p><strong>${person.breakdown['Annual Leave'] || 0}d</strong> taken of <strong>${person.effectiveAllowance}d</strong> allowance</p>
+      <p>Remaining: <strong style="color:${person.balanceStatus === 'negative' ? '#dc2626' : person.balanceStatus === 'low' ? '#d97706' : '#059669'}">${person.remaining ?? 0}d</strong>${person.balanceStatus === 'negative' ? ' (over allowance)' : ''}</p>
+      ${person.carryForwardDays > 0 ? `<p style="font-size:11px;color:#666">Includes ${person.carryForwardDays}d carried forward</p>` : ''}
+    </div>` : `
+    <div class="card">
+      <h3>School Holiday Working</h3>
+      <p>Worked: <strong>${(person.toilBalance || {}).accrued || 0}d</strong> of <strong>${(person.toilBalance || {}).effectiveTarget || 30}d</strong> target</p>
+      <p>Credit: <strong style="color:${(person.toilBalance || {}).credit < 0 ? '#dc2626' : '#059669'}">${(person.toilBalance || {}).credit ?? 0}d</strong></p>
+      <p>TOIL taken: <strong>${(person.toilBalance || {}).used || 0}d</strong></p>
+    </div>`;
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<title>Leave Report — ${person.name}</title>
+<style>
+  @page { size: A4; margin: 18mm; }
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color: #1f2937; line-height: 1.5; max-width: 800px; margin: 0 auto; padding: 20px; }
+  h1 { color: #047857; margin: 0 0 4px; font-size: 22px; }
+  h2 { color: #374151; font-size: 15px; margin: 24px 0 8px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+  h3 { font-size: 13px; margin: 0 0 6px; color: #4b5563; }
+  .header { border-bottom: 3px solid #047857; padding-bottom: 12px; margin-bottom: 16px; }
+  .meta { color: #6b7280; font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 6px; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-green { background: #d1fae5; color: #065f46; }
+  .badge-gray { background: #f3f4f6; color: #4b5563; }
+  .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+  th { background: #f3f4f6; text-align: left; padding: 6px 8px; border: 1px solid #e5e7eb; font-weight: 600; }
+  td { padding: 5px 8px; border: 1px solid #e5e7eb; }
+  .footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; }
+  @media print { .no-print { display: none; } body { padding: 0; } }
+  .print-btn { background: #047857; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+</style></head>
+<body>
+  <div class="no-print" style="text-align:right;margin-bottom:12px"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
+  <div class="header">
+    <h1>${person.name}</h1>
+    <p class="meta">${person.department || '—'} · ${person.isTermTime ? 'Term Time Contract' : 'Standard Contract'}</p>
+    <p class="meta">Holiday year: ${holidayYearLabel || 'current'}</p>
+    <div style="margin-top:8px">
+      <span class="badge ${person.isTermTime ? 'badge-blue' : 'badge-green'}">${person.isTermTime ? 'Term Time' : 'Standard'}</span>
+      ${isAdmin ? `<span class="badge ${band === 'High' ? 'badge-red' : band === 'Medium' ? 'badge-amber' : 'badge-gray'}">Bradford: ${person.bradford} (${band})</span>` : ''}
+      ${person.balanceStatus === 'negative' ? '<span class="badge badge-red">Over limit</span>' : ''}
+    </div>
+  </div>
+
+  ${balanceHtml}
+
+  <h2>Leave Breakdown This Year</h2>
+  <table><thead><tr><th>Type</th><th style="text-align:right">Days</th></tr></thead><tbody>${breakdownRows}</tbody></table>
+
+  <h2>Holiday Periods (${annualSpells.length})</h2>
+  <table><thead><tr><th>Period</th><th style="text-align:right">Days</th></tr></thead><tbody>${annualRows}</tbody></table>
+
+  <h2>Sick Leave Spells (${sickSpells.length})</h2>
+  <table><thead><tr><th>#</th><th>Period</th><th style="text-align:right">Days</th>${isAdmin ? '<th>Reason</th>' : ''}</tr></thead><tbody>${sickRows}</tbody></table>
+  ${!isAdmin && sickSpells.length > 0 ? '<p style="font-size:11px;color:#9ca3af;font-style:italic">Sick reasons are restricted to HR / Admin staff.</p>' : ''}
+
+  <h2>Monthly Activity</h2>
+  ${monthlyHtml}
+
+  ${isAdmin ? `
+  <h2>Bradford Factor</h2>
+  <div class="card">
+    <p>Score: <strong>${person.bradford}</strong> — ${band} risk</p>
+    <p style="font-size:11px;color:#666;margin-top:4px">Calculated as (number of sick spells)² × (total sick days). Measures impact of short, frequent absences. 0–49 Low · 50–124 Review suggested · 125+ Management action recommended.</p>
+  </div>` : ''}
+
+  <div class="footer">
+    Generated ${new Date().toLocaleString('en-GB')} · Sotara LeaveHub · Confidential
+  </div>
+</body></html>`;
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+};
 
 /* ── Bradford Factor band ─────────────────────────────────── */
 const getBradfordBand = (score) => {
@@ -41,7 +195,7 @@ const weekLabel = (weekStart) => {
 };
 
 /* ══ Individual Analysis Modal ═══════════════════════════════ */
-const PersonModal = ({ person, onClose }) => {
+const PersonModal = ({ person, onClose, isAdmin = false, holidayYearLabel = '' }) => {
   const band      = getBradfordBand(person.bradford);
   const isNeg     = person.balanceStatus === 'negative';
   const isLow     = person.balanceStatus === 'low';
@@ -68,9 +222,11 @@ const PersonModal = ({ person, onClose }) => {
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${person.isTermTime ? 'bg-blue-200 text-blue-900' : 'bg-white/20 text-white'}`}>
                 {person.isTermTime ? 'Term Time Contract' : 'Standard Contract'}
               </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${band.bg} ${band.text}`}>
-                Bradford: {person.bradford} ({band.label})
-              </span>
+              {isAdmin && (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${band.bg} ${band.text}`}>
+                  Bradford: {person.bradford} ({band.label})
+                </span>
+              )}
               {isNeg && (
                 <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-200 text-red-900">
                   Over limit
@@ -78,9 +234,18 @@ const PersonModal = ({ person, onClose }) => {
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white p-1 mt-1">
-            <X size={20} />
-          </button>
+          <div className="flex items-start gap-2">
+            <button
+              onClick={() => printIndividualReport(person, holidayYearLabel, isAdmin)}
+              className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-white/20 transition-colors"
+              title="Download printable PDF report"
+            >
+              <Download size={13}/> Report
+            </button>
+            <button onClick={onClose} className="text-white/70 hover:text-white p-1">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
@@ -197,25 +362,27 @@ const PersonModal = ({ person, onClose }) => {
             </div>
           )}
 
-          {/* ── Bradford Factor explanation ── */}
-          <div className={`rounded-xl p-4 border ${band.label === 'High' ? 'border-red-200 bg-red-50' : band.label === 'Medium' ? 'border-amber-100 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
-            <div className="flex items-center gap-3 mb-2">
-              <Activity size={15} className={band.label === 'High' ? 'text-red-500' : band.label === 'Medium' ? 'text-amber-500' : 'text-gray-400'}/>
-              <p className="text-sm font-bold text-gray-700">Bradford Factor Score: {person.bradford}</p>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${band.bg} ${band.text}`}>{band.label}</span>
+          {/* ── Bradford Factor explanation (Admin only) ── */}
+          {isAdmin && (
+            <div className={`rounded-xl p-4 border ${band.label === 'High' ? 'border-red-200 bg-red-50' : band.label === 'Medium' ? 'border-amber-100 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+              <div className="flex items-center gap-3 mb-2">
+                <Activity size={15} className={band.label === 'High' ? 'text-red-500' : band.label === 'Medium' ? 'text-amber-500' : 'text-gray-400'}/>
+                <p className="text-sm font-bold text-gray-700">Bradford Factor Score: {person.bradford}</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${band.bg} ${band.text}`}>{band.label}</span>
+              </div>
+              <p className="text-xs text-gray-500 mb-2">
+                Calculated as (number of sick spells)² x (total sick days). Measures the impact of short, frequent absences.
+                {person.breakdown['Sick Leave'] > 0
+                  ? ` ${person.name.split(' ')[0]} has had sick leave recorded this year.`
+                  : ` No sick leave recorded this year.`}
+              </p>
+              <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>0 to 49: Low risk</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>50 to 124: Review suggested</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>125 and above: Management action recommended</span>
+              </div>
             </div>
-            <p className="text-xs text-gray-500 mb-2">
-              Calculated as (number of sick spells)² x (total sick days). Measures the impact of short, frequent absences.
-              {person.breakdown['Sick Leave'] > 0
-                ? ` ${person.name.split(' ')[0]} has had sick leave recorded this year.`
-                : ` No sick leave recorded this year.`}
-            </p>
-            <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>0 to 49: Low risk</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>50 to 124: Review suggested</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>125 and above: Management action recommended</span>
-            </div>
-          </div>
+          )}
 
           {/* ── Sick leave spells detail ── */}
           {(() => {
@@ -237,12 +404,15 @@ const PersonModal = ({ person, onClose }) => {
                         </span>
                         <span className="ml-auto text-xs font-bold text-rose-700">{r.daysCount}d</span>
                       </div>
-                      {r.sickReason && (
+                      {isAdmin && r.sickReason && (
                         <p className="text-xs text-rose-600 mt-1 ml-7 italic">Reason: {r.sickReason}</p>
                       )}
                     </div>
                   ))}
                 </div>
+                {!isAdmin && sickSpells.some(s => s.sickReason) && (
+                  <p className="text-[10px] text-gray-400 italic mt-1">Sick reasons are visible to HR / Admin only.</p>
+                )}
               </div>
             );
           })()}
@@ -290,7 +460,7 @@ const PersonModal = ({ person, onClose }) => {
                         <TypeBadge type={r.type}/>
                         <span className="text-xs font-semibold text-gray-700 ml-auto">{r.daysCount}d</span>
                       </div>
-                      {r.sickReason && (
+                      {isAdmin && r.sickReason && (
                         <p className="text-xs text-rose-500 mt-0.5 ml-1 italic">Reason: {r.sickReason}</p>
                       )}
                     </div>
@@ -412,6 +582,27 @@ const UpcomingSchedule = ({ requests, staffList, departments, isAdmin, myDept, t
 
   const visibleCount = schedView === 'dept' && !schedDept ? baseUpcoming.length : filtered.length;
 
+  /* CSV export of currently visible schedule */
+  const exportScheduleCSV = () => {
+    const rows = [['Start Date', 'End Date', 'Days', 'Employee', 'Department', 'Leave Type']];
+    const data = (schedView === 'dept' && !schedDept) ? baseUpcoming : filtered;
+    data.forEach(r => {
+      rows.push([
+        r.startDate,
+        r.endDate || r.startDate,
+        r.daysCount,
+        r.employeeName,
+        r.department || '',
+        r.type,
+      ]);
+    });
+    bankHolidays.forEach(bh => {
+      rows.push([bh.date, bh.date, 1, 'All Staff', '', `Bank Holiday: ${bh.description}`]);
+    });
+    const filename = `upcoming-schedule-${schedRange}-${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(filename, rows);
+  };
+
   /* ── Bank holiday row renderer ── */
   const renderBankHolidayRow = (bh) => (
     <div key={`bh-${bh.id || bh.date}`} className="flex flex-wrap items-center gap-3 rounded-lg px-3 py-2.5 border bg-violet-50 border-violet-200">
@@ -472,13 +663,23 @@ const UpcomingSchedule = ({ requests, staffList, departments, isAdmin, myDept, t
           ))}
         </div>
 
-        {/* Time range */}
-        <select value={schedRange} onChange={e => setSchedRange(e.target.value)} className="text-sm">
-          <option value="2w">Next 2 Weeks</option>
-          <option value="1m">Next Month</option>
-          <option value="3m">Next 3 Months</option>
-          <option value="all">All Future</option>
-        </select>
+        <div className="flex items-center gap-2">
+          {/* Time range */}
+          <select value={schedRange} onChange={e => setSchedRange(e.target.value)} className="text-sm">
+            <option value="2w">Next 2 Weeks</option>
+            <option value="1m">Next Month</option>
+            <option value="3m">Next 3 Months</option>
+            <option value="all">All Future</option>
+          </select>
+          <button
+            onClick={exportScheduleCSV}
+            disabled={visibleCount === 0}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Download visible schedule as CSV"
+          >
+            <Download size={11}/> CSV
+          </button>
+        </div>
       </div>
 
       {/* ── Secondary filter ── */}
@@ -629,12 +830,65 @@ const AnalyticsView = ({
 }) => {
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [mainTab, setMainTab] = useState('analysis'); // 'analysis' | 'schedule'
+  const [concernsOnly, setConcernsOnly] = useState(false);
 
-  const standard      = analyticsData.individualData.filter(s => !s.isTermTime);
-  const termTime      = analyticsData.individualData.filter(s => s.isTermTime);
+  const isConcern = (s) => s.balanceStatus === 'negative' || (isAdmin && s.bradford >= 125);
+
+  const allStandard = analyticsData.individualData.filter(s => !s.isTermTime);
+  const allTermTime = analyticsData.individualData.filter(s => s.isTermTime);
+  const standard    = concernsOnly ? allStandard.filter(isConcern) : allStandard;
+  const termTime    = concernsOnly ? allTermTime.filter(isConcern) : allTermTime;
   const negativeBalance = analyticsData.individualData.filter(s => s.balanceStatus === 'negative');
   const highBradford    = analyticsData.individualData.filter(s => s.bradford >= 125);
   const medBradford     = analyticsData.individualData.filter(s => s.bradford >= 50 && s.bradford < 125);
+  const concernsCount   = analyticsData.individualData.filter(isConcern).length;
+
+  /* ── CSV exporters ───────────────────────────────────────── */
+  const exportStandardCSV = () => {
+    const header = ['Name', 'Department', 'Allowance', 'Carry Forward', 'Effective Allowance',
+      'Annual Leave Taken', 'Annual Leave Booked', 'Free Remaining', 'Status',
+      'Sick Days', 'CPD Days', 'Medical Appts', 'Compassionate', 'Unpaid'];
+    if (isAdmin) header.push('Bradford Factor');
+    const rows = [header];
+    allStandard.forEach(s => {
+      const row = [
+        s.name, s.department || '',
+        s.allowance || 0, s.carryForwardDays || 0, s.effectiveAllowance || 0,
+        s.annualLeaveTaken ?? (s.breakdown['Annual Leave'] || 0),
+        s.annualLeaveUpcoming ?? 0,
+        Math.max(0, s.remaining ?? 0),
+        s.balanceStatus === 'negative' ? 'Over allowance' : s.balanceStatus === 'low' ? 'Low remaining' : 'OK',
+        s.breakdown['Sick Leave'] || 0,
+        (s.breakdown['CPD'] || 0) + (s.breakdown['Professional Dev'] || 0),
+        s.breakdown['Medical Appt'] || 0,
+        s.breakdown['Compassionate'] || 0,
+        s.breakdown['Unpaid'] || 0,
+      ];
+      if (isAdmin) row.push(s.bradford);
+      rows.push(row);
+    });
+    downloadCSV(`standard-staff-${currentHolidayYear?.label || 'report'}.csv`, rows);
+  };
+
+  const exportTermTimeCSV = () => {
+    const header = ['Name', 'Department', 'Days Worked (School Hols)', 'Target',
+      'TOIL Used', 'Credit', 'Term Time Leave Taken', 'Sick Days'];
+    if (isAdmin) header.push('Bradford Factor');
+    const rows = [header];
+    allTermTime.forEach(s => {
+      const t = s.toilBalance || {};
+      const row = [
+        s.name, s.department || '',
+        t.accrued || 0, t.effectiveTarget || 30,
+        t.used || 0, t.credit ?? 0,
+        t.termTimeLeaveTaken || 0,
+        s.breakdown['Sick Leave'] || 0,
+      ];
+      if (isAdmin) row.push(s.bradford);
+      rows.push(row);
+    });
+    downloadCSV(`term-time-staff-${currentHolidayYear?.label || 'report'}.csv`, rows);
+  };
 
   /* KPI totals */
   const totalAnnualLeave = standard.reduce((sum, s) => sum + (s.breakdown['Annual Leave'] || 0), 0);
@@ -675,6 +929,25 @@ const AnalyticsView = ({
             </button>
           </div>
 
+          {/* Concerns Only toggle (analysis tab) */}
+          {mainTab === 'analysis' && concernsCount > 0 && (
+            <button
+              onClick={() => setConcernsOnly(!concernsOnly)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                concernsOnly
+                  ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                  : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
+              }`}
+              title={concernsOnly ? 'Show all staff' : 'Filter to staff with concerns only'}
+            >
+              <Filter size={12}/>
+              {concernsOnly ? 'Showing concerns' : 'Concerns only'}
+              <span className={`px-1.5 py-0 rounded-full text-[10px] font-bold ${concernsOnly ? 'bg-white/20' : 'bg-red-100'}`}>
+                {concernsCount}
+              </span>
+            </button>
+          )}
+
           {/* Dept filter (only shown on analysis tab for admins) */}
           {isAdmin && mainTab === 'analysis' && (
             <select
@@ -705,7 +978,7 @@ const AnalyticsView = ({
       {mainTab === 'analysis' && (
         <>
           {/* ── Alert banner ── */}
-          {(negativeBalance.length > 0 || highBradford.length > 0) && (
+          {(negativeBalance.length > 0 || (isAdmin && highBradford.length > 0)) && (
             <div className="rounded-xl border-2 border-red-200 bg-red-50 p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle size={16} className="text-red-500 flex-shrink-0"/>
@@ -717,7 +990,7 @@ const AnalyticsView = ({
                   {' '}<span className="font-medium">{negativeBalance.map(s => s.name.split(' ')[0]).join(', ')}</span>
                 </p>
               )}
-              {highBradford.length > 0 && (
+              {isAdmin && highBradford.length > 0 && (
                 <p className="text-xs text-red-600">
                   <strong>{highBradford.length} staff member{highBradford.length > 1 ? 's' : ''}</strong> {highBradford.length > 1 ? 'have' : 'has'} a high Bradford Factor score (125 and above):
                   {' '}<span className="font-medium">{highBradford.map(s => `${s.name.split(' ')[0]} (${s.bradford})`).join(', ')}</span>
@@ -751,7 +1024,7 @@ const AnalyticsView = ({
           </div>
 
           {/* ── Non-deductible summary row ── */}
-          {(totalOther > 0 || medBradford.length > 0) && (
+          {(totalOther > 0 || (isAdmin && medBradford.length > 0)) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {totalOther > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-3">
@@ -766,7 +1039,7 @@ const AnalyticsView = ({
                   </div>
                 </div>
               )}
-              {medBradford.length > 0 && (
+              {isAdmin && medBradford.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-3">
                   <Activity size={16} className="text-amber-500 flex-shrink-0 mt-0.5"/>
                   <div className="text-xs text-amber-700">
@@ -784,7 +1057,14 @@ const AnalyticsView = ({
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0"></span>
                 <h3 className="font-bold text-gray-700">Standard Contracts</h3>
-                <span className="ml-auto text-xs text-gray-400">{standard.length} staff</span>
+                <span className="ml-auto text-xs text-gray-400">{standard.length} staff{concernsOnly && allStandard.length !== standard.length ? ` of ${allStandard.length}` : ''}</span>
+                <button
+                  onClick={exportStandardCSV}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors"
+                  title="Download as CSV"
+                >
+                  <Download size={11}/> CSV
+                </button>
               </div>
               <p className="text-xs text-gray-400 mb-4">Holiday leave tracks against annual allowance. Click any row for full individual analysis.</p>
 
@@ -804,7 +1084,7 @@ const AnalyticsView = ({
                       <th className="text-center">Sick</th>
                       <th className="text-center">CPD</th>
                       <th className="text-center">Other</th>
-                      <th className="text-center">Bradford</th>
+                      {isAdmin && <th className="text-center">Bradford</th>}
                       <th></th>
                     </tr>
                   </thead>
@@ -896,11 +1176,13 @@ const AnalyticsView = ({
                               ? <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full text-xs font-semibold">{otherDays}d</span>
                               : <span className="text-gray-300 text-xs">-</span>}
                           </td>
-                          <td className="text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${band.bg} ${band.text}`}>
-                              {s.bradford}
-                            </span>
-                          </td>
+                          {isAdmin && (
+                            <td className="text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${band.bg} ${band.text}`}>
+                                {s.bradford}
+                              </span>
+                            </td>
+                          )}
                           <td className="text-right pr-2">
                             <ChevronRight size={14} className="text-gray-400 inline"/>
                           </td>
@@ -919,7 +1201,14 @@ const AnalyticsView = ({
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0"></span>
                 <h3 className="font-bold text-gray-700">Term Time Contracts</h3>
-                <span className="ml-auto text-xs text-gray-400">{termTime.length} staff</span>
+                <span className="ml-auto text-xs text-gray-400">{termTime.length} staff{concernsOnly && allTermTime.length !== termTime.length ? ` of ${allTermTime.length}` : ''}</span>
+                <button
+                  onClick={exportTermTimeCSV}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                  title="Download as CSV"
+                >
+                  <Download size={11}/> CSV
+                </button>
               </div>
               <p className="text-xs text-gray-400 mb-4">Tracks school holiday working progress and credit balance. Click any row for full analysis.</p>
 
@@ -932,7 +1221,7 @@ const AnalyticsView = ({
                       <th className="text-center">TOIL Taken</th>
                       <th className="text-center">Credit</th>
                       <th className="text-center">Sick</th>
-                      <th className="text-center">Bradford</th>
+                      {isAdmin && <th className="text-center">Bradford</th>}
                       <th></th>
                     </tr>
                   </thead>
@@ -984,11 +1273,13 @@ const AnalyticsView = ({
                               ? <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full text-xs font-semibold">{s.breakdown['Sick Leave']}d</span>
                               : <span className="text-gray-300 text-xs">-</span>}
                           </td>
-                          <td className="text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${band.bg} ${band.text}`}>
-                              {s.bradford}
-                            </span>
-                          </td>
+                          {isAdmin && (
+                            <td className="text-center">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${band.bg} ${band.text}`}>
+                                {s.bradford}
+                              </span>
+                            </td>
+                          )}
                           <td className="text-right pr-2">
                             <ChevronRight size={14} className="text-gray-400 inline"/>
                           </td>
@@ -998,6 +1289,15 @@ const AnalyticsView = ({
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* ── Concerns-only empty state ── */}
+          {concernsOnly && standard.length === 0 && termTime.length === 0 && analyticsData.individualData.length > 0 && (
+            <div className="card text-center py-14 text-emerald-600">
+              <CheckCircle2 size={40} className="mx-auto mb-3 opacity-60"/>
+              <p className="font-semibold">All clear — no staff concerns at this time</p>
+              <p className="text-xs text-gray-400 mt-1">No-one is over their leave allowance{isAdmin ? ' or showing high Bradford Factor' : ''}.</p>
             </div>
           )}
 
@@ -1012,7 +1312,12 @@ const AnalyticsView = ({
 
       {/* ── Individual analysis popup ── */}
       {selectedPerson && (
-        <PersonModal person={selectedPerson} onClose={() => setSelectedPerson(null)} />
+        <PersonModal
+          person={selectedPerson}
+          onClose={() => setSelectedPerson(null)}
+          isAdmin={isAdmin}
+          holidayYearLabel={currentHolidayYear?.label || ''}
+        />
       )}
     </div>
   );
