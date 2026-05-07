@@ -353,7 +353,7 @@ export const useAuth = () => {
                 const accounts = sotataMsal.getAllAccounts();
                 if (accounts.length > 0) {
                   const tokenResponse = await sotataMsal.acquireTokenSilent({
-                    scopes: ['openid', 'profile', 'email', 'Mail.Send', 'User.Read'],
+                    scopes: ['openid', 'profile', 'email', 'Mail.Send', 'User.Read', 'People.Read'],
                     account: accounts[0]
                   });
                   azureToken = tokenResponse.accessToken;

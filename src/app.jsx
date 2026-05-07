@@ -881,14 +881,32 @@ const App = () => {
 
   const searchDirectory = async (query) => {
     if (!query || query.length < 2) return;
-    if (!graphToken) return alert("Please re-login to search directory");
     setIsSearching(true);
     try {
-      // /me/people searches the GAL using People.Read (no admin consent needed).
-      // Fallback to /users $search if people returns nothing.
+      // Always acquire a fresh token scoped to People.Read so we don't rely
+      // on a cached token that may be missing this scope.
+      let token = graphToken;
+      try {
+        const { getMsalInstance } = await import('./services/entraAuth.js');
+        const msalInstance = getMsalInstance();
+        const accounts = msalInstance?.getAllAccounts() || [];
+        if (accounts.length > 0) {
+          const tokenResponse = await msalInstance.acquireTokenSilent({
+            scopes: ['People.Read', 'User.Read'],
+            account: accounts[0],
+          });
+          token = tokenResponse.accessToken;
+        }
+      } catch (tokenErr) {
+        console.warn('Could not acquire People.Read token silently:', tokenErr.message);
+      }
+
+      if (!token) { setIsSearching(false); return alert("Please re-login to search directory"); }
+
+      // /me/people — searches GAL with People.Read, no admin consent needed
       const peopleRes = await fetch(
         `https://graph.microsoft.com/v1.0/me/people?$search="${encodeURIComponent(query)}"&$select=displayName,scoredEmailAddresses,department,jobTitle&$top=8`,
-        { headers: { Authorization: `Bearer ${graphToken}` } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       const peopleData = await peopleRes.json();
       const people = (peopleData.value || [])
@@ -903,10 +921,10 @@ const App = () => {
       if (people.length > 0) {
         setSearchResults(people);
       } else {
-        // Fallback: search /users with $search (requires ConsistencyLevel header)
+        // Fallback: /users $search with ConsistencyLevel header
         const usersRes = await fetch(
           `https://graph.microsoft.com/v1.0/users?$search="displayName:${encodeURIComponent(query)}"&$select=displayName,mail,department,jobTitle&$top=8`,
-          { headers: { Authorization: `Bearer ${graphToken}`, ConsistencyLevel: 'eventual' } }
+          { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' } }
         );
         const usersData = await usersRes.json();
         setSearchResults(usersData.value || []);
