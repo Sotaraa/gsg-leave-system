@@ -40,6 +40,12 @@ const App = () => {
   const [myWorkingDays, setMyWorkingDays] = useState([1, 2, 3, 4, 5]);
   const [graphToken, setGraphToken] = useState(null);
 
+  // ── God mode: super admin can switch into any organisation ───────────────
+  const [activeOrgId, setActiveOrgId] = useState(null);   // null = use effectiveOrgId
+  const [allOrgs, setAllOrgs] = useState([]);
+  const isSuperAdmin = user?.email?.toLowerCase() === 'info@sotara.co.uk';
+  const effectiveOrgId = (isSuperAdmin && activeOrgId) ? activeOrgId : (user?.organization || activeOrgId);
+
   const [staffList, setStaffList] = useState([]);
   const [requests, setRequests] = useState([]);
   const [departments, setDepartments] = useState(CONFIG.defaultDepartments);
@@ -160,10 +166,19 @@ const App = () => {
     }
   }, [supabaseSession]);
 
+  // Load all orgs for super admin org switcher
   useEffect(() => {
-    if (!user || !user.organization) return;
+    if (!isSuperAdmin) return;
+    supabase.from('organizations').select('id, name').order('name').then(({ data }) => {
+      if (data) setAllOrgs(data);
+    });
+  }, [isSuperAdmin]);
 
-    const orgId = user.organization;
+  useEffect(() => {
+    if (!user) return;
+    const orgId = effectiveOrgId || user.organization;
+    if (!orgId) return;
+
     const subscriptions = [];
     let isUnmounting = false;
 
@@ -438,11 +453,11 @@ const App = () => {
   const applyCarryForward = async (carryData, closingDateStr) => {
     try {
       const resetDate = new Date().toISOString().split('T')[0];
-      await supabaseApi.staffApi.applyCarryForward(carryData, user.organization);
+      await supabaseApi.staffApi.applyCarryForward(carryData, effectiveOrgId);
       await supabaseApi.settingsApi.updateSettings({
         lastYearResetDate: resetDate,
         lastYearResetClosingDate: closingDateStr || resetDate
-      }, user.organization);
+      }, effectiveOrgId);
       addNotification(`Holiday year reset. Carry forward applied for ${carryData.length} staff.`);
       return true;
     } catch (error) {
@@ -508,7 +523,7 @@ const App = () => {
         submittedAt: new Date().toISOString(),
         ...(useHoursMode ? { hoursWorked: hoursVal, hoursPerDay: myHpd } : {}),
         ...(formData.type === 'Sick Leave' && formData.sickReason ? { sickReason: formData.sickReason } : {})
-      }, user.organization);
+      }, effectiveOrgId);
       addNotification("Request Submitted");
     } catch (error) {
       console.error('Error submitting request:', error);
@@ -588,7 +603,7 @@ const App = () => {
         await supabaseApi.requestsApi.approveRequest(
           id,
           approvalSubType,
-          user.organization,
+          effectiveOrgId,
           user.azureToken,
           reqForApproval.employeeEmail,
           reqForApproval.employeeName,
@@ -600,7 +615,7 @@ const App = () => {
         await supabaseApi.requestsApi.rejectRequest(
           id,
           rejectionReason || 'Request not approved',
-          user.organization,
+          effectiveOrgId,
           user.azureToken,
           reqForApproval.employeeEmail,
           reqForApproval.employeeName,
@@ -658,7 +673,7 @@ const App = () => {
     if (confirm("Delete this request?")) {
       try {
         const req = requests.find(r => r.id === id);
-        await supabaseApi.requestsApi.deleteRequest(id, user.organization);
+        await supabaseApi.requestsApi.deleteRequest(id, effectiveOrgId);
         addNotification("Deleted");
         if (req) {
           const empStaff = staffList.find(s => s.email?.toLowerCase() === req.employeeEmail?.toLowerCase());
@@ -694,9 +709,9 @@ const App = () => {
     try {
       const data = { ...newStaff, allowance: Number(newStaff.allowance) };
       if (adminEditId) {
-        await supabaseApi.staffApi.updateStaff(adminEditId, data, user.organization);
+        await supabaseApi.staffApi.updateStaff(adminEditId, data, effectiveOrgId);
       } else {
-        await supabaseApi.staffApi.addStaff({ ...data, isArchived: false }, user.organization);
+        await supabaseApi.staffApi.addStaff({ ...data, isArchived: false }, effectiveOrgId);
       }
       addNotification("Staff Saved");
       setNewStaff({ name: '', email: '', department: departments[0], role: 'Staff', allowance: systemSettings.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0, workingDays: [], hoursPerDay: null });
@@ -741,7 +756,7 @@ const App = () => {
       };
       if (manualLeave.approvalSubType) manualRecord.approvalSubType = manualLeave.approvalSubType;
 
-      await supabaseApi.requestsApi.submitRequest(manualRecord, user.organization);
+      await supabaseApi.requestsApi.submitRequest(manualRecord, effectiveOrgId);
       addNotification("Absence Recorded");
 
       if (!manualLeave.silentEmail) {
@@ -779,7 +794,7 @@ const App = () => {
       const silentRecords = requests.filter(r => r.importedSilently === true);
       if (!silentRecords.length) return alert('No silently imported records found to delete.');
       if (!confirm(`This will permanently delete all ${silentRecords.length} silently imported record${silentRecords.length !== 1 ? 's' : ''}. This cannot be undone — continue?`)) return;
-      await supabaseApi.requestsApi.deleteSilentImports(user.organization);
+      await supabaseApi.requestsApi.deleteSilentImports(effectiveOrgId);
       addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
     } catch (error) {
       console.error('Error deleting silent imports:', error);
@@ -888,7 +903,7 @@ const App = () => {
   const toggleArchiveStaff = async (id, currentStatus) => {
     if (confirm(currentStatus ? "Restore this user?" : "Archive this user?")) {
       try {
-        await supabaseApi.staffApi.toggleArchiveStaff(id, !currentStatus, user.organization);
+        await supabaseApi.staffApi.toggleArchiveStaff(id, !currentStatus, effectiveOrgId);
         addNotification(currentStatus ? "User Restored" : "User Archived");
       } catch (error) {
         console.error('Error toggling archive status:', error);
@@ -900,7 +915,7 @@ const App = () => {
   const permanentlyDeleteStaff = async (id, name) => {
     if (!confirm(`⚠️ PERMANENTLY DELETE ${name}?\n\nThis will remove them from the system completely. This cannot be undone.\n\nAre you absolutely sure?`)) return;
     try {
-      await supabaseApi.staffApi.deleteStaff(id, user.organization);
+      await supabaseApi.staffApi.deleteStaff(id, effectiveOrgId);
       addNotification(`${name} permanently deleted`);
     } catch (error) {
       console.error('Error deleting staff:', error);
@@ -922,7 +937,7 @@ const App = () => {
   const addDepartment = async () => {
     if (!newDeptName) return;
     try {
-      await supabaseApi.departmentsApi.addDepartment(newDeptName, user.organization);
+      await supabaseApi.departmentsApi.addDepartment(newDeptName, effectiveOrgId);
       addNotification("Department Added");
       setNewDeptName('');
     } catch (error) {
@@ -935,7 +950,7 @@ const App = () => {
     if (CONFIG.defaultDepartments.includes(name)) return alert("Cannot delete default.");
     if (confirm(`Delete ${name}?`)) {
       try {
-        await supabaseApi.departmentsApi.deleteDepartment(deptId, user.organization);
+        await supabaseApi.departmentsApi.deleteDepartment(deptId, effectiveOrgId);
         addNotification("Department Deleted");
       } catch (error) {
         console.error('Error deleting department:', error);
@@ -947,7 +962,7 @@ const App = () => {
   const addTermDate = async () => {
     if (!newTermDate.date || !newTermDate.description) return;
     try {
-      const created = await supabaseApi.termDatesApi.addTermDate(newTermDate, user.organization);
+      const created = await supabaseApi.termDatesApi.addTermDate(newTermDate, effectiveOrgId);
       addNotification("Date Added");
       setNewTermDate({ description: '', date: '', type: 'Term Start' });
 
@@ -963,7 +978,7 @@ const App = () => {
         // Get holiday details for sync
         const holiday = termDates.find(t => t.id === id);
 
-        await supabaseApi.termDatesApi.deleteTermDate(id, user.organization);
+        await supabaseApi.termDatesApi.deleteTermDate(id, effectiveOrgId);
         addNotification("Deleted");
 
       } catch (error) {
@@ -978,7 +993,7 @@ const App = () => {
     try {
       const year = newSchoolTerm.autumnStart.substring(0, 4);
       const label = newSchoolTerm.academicYear || `${year}-${Number(year) + 1}`;
-      await supabaseApi.schoolTermsApi.addSchoolTerm({ ...newSchoolTerm, academicYear: label }, user.organization);
+      await supabaseApi.schoolTermsApi.addSchoolTerm({ ...newSchoolTerm, academicYear: label }, effectiveOrgId);
       addNotification("School term added");
       setNewSchoolTerm({ academicYear: '', autumnStart: '', autumnEnd: '', autumnHalfTermStart: '', autumnHalfTermEnd: '', springStart: '', springEnd: '', springHalfTermStart: '', springHalfTermEnd: '', summerStart: '', summerEnd: '', summerHalfTermStart: '', summerHalfTermEnd: '' });
     } catch (error) {
@@ -990,7 +1005,7 @@ const App = () => {
   const deleteSchoolTerm = async (id) => {
     if (confirm("Delete this school year's term dates?")) {
       try {
-        await supabaseApi.schoolTermsApi.deleteSchoolTerm(id, user.organization);
+        await supabaseApi.schoolTermsApi.deleteSchoolTerm(id, effectiveOrgId);
         addNotification("School term deleted");
       } catch (error) {
         console.error('Error deleting school term:', error);
@@ -1003,7 +1018,7 @@ const App = () => {
     if (!confirm("Import UK Holidays?")) return;
     try {
       const hols = generateUKBankHolidays(2025).concat(generateUKBankHolidays(2026));
-      await supabaseApi.termDatesApi.importBankHolidays(hols, user.organization);
+      await supabaseApi.termDatesApi.importBankHolidays(hols, effectiveOrgId);
       addNotification("Holidays Imported");
     } catch (error) {
       console.error('Error importing holidays:', error);
@@ -1018,7 +1033,7 @@ const App = () => {
       await supabaseApi.announcementsApi.addAnnouncement(
         newAnnouncement.message,
         newAnnouncement.expiry,
-        user.organization
+        effectiveOrgId
       );
       addNotification("Posted");
       setNewAnnouncement({ message: '', expiry: '' });
@@ -1031,7 +1046,7 @@ const App = () => {
   const deleteAnnouncement = async (id) => {
     if (confirm("Delete?")) {
       try {
-        await supabaseApi.announcementsApi.deleteAnnouncement(id, user.organization);
+        await supabaseApi.announcementsApi.deleteAnnouncement(id, effectiveOrgId);
       } catch (error) {
         console.error('Error deleting announcement:', error);
         addNotification("Error deleting announcement");
@@ -1086,8 +1101,9 @@ const App = () => {
   };
 
   const analyticsData = useMemo(() => {
-    const isAdmin = myRole === 'Admin';
-    const canManage = myRole === 'Dept Head' || isAdmin;
+    const effectiveRoleForAnalytics = (isSuperAdmin && activeOrgId) ? 'Admin' : myRole;
+    const isAdmin = effectiveRoleForAnalytics === 'Admin';
+    const canManage = effectiveRoleForAnalytics === 'Dept Head' || isAdmin;
     if (!canManage) return null;
     const tally = {};
     CONFIG.leaveTypes.forEach(t => tally[t] = 0);
@@ -1154,7 +1170,7 @@ const App = () => {
       return { ...s, effectiveAllowance, breakdown, total, bradford: (sickSpells * sickSpells) * sickDays, userRequests, monthlyBreakdown, remaining, balanceStatus, toilBalance, annualLeaveTaken, annualLeaveUpcoming };
     });
     return { tally, individualData, yearLabel: currentHolidayYear.label };
-  }, [requests, staffList, selectedDeptFilter, myRole, myDept, currentHolidayYear, systemSettings]);
+  }, [requests, staffList, selectedDeptFilter, myRole, myDept, currentHolidayYear, systemSettings, isSuperAdmin, activeOrgId]);
 
   if (isLoading) return (
     <div className="h-screen flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-blue-50 via-white to-blue-50">
@@ -1164,8 +1180,10 @@ const App = () => {
   );
   if (!user) return <LoginScreen error={loginError} />;
 
-  const isAdmin = myRole === 'Admin';
-  const canManage = myRole === 'Dept Head' || isAdmin;
+  // When super admin has switched into a client org, force Admin role for that session
+  const effectiveRole = (isSuperAdmin && activeOrgId) ? 'Admin' : myRole;
+  const isAdmin = effectiveRole === 'Admin';
+  const canManage = effectiveRole === 'Dept Head' || isAdmin;
   const myProfile = staffList.find(s => s.email?.toLowerCase() === user?.email?.toLowerCase());
   const myCarryForwardDays = myProfile?.carryForwardDays || 0;
   const myTOILBalance = getTOILBalance(user?.email, myProfile?.termTimeDaysTarget, myProfile?.hoursPerDay, amITermTime);
@@ -1226,14 +1244,61 @@ const App = () => {
 
         {!showOnboarding && (
           <>
-        <Sidebar view={view} setView={setView} myRole={myRole} userEmail={user?.email} onLogout={handleLogout} onShowOnboarding={() => {
-          if (user?.email?.toLowerCase() === 'info@sotara.co.uk') {
-            setShowOnboarding(true);
-          } else {
-            alert('Only info@sotara.co.uk can create organizations');
-          }
-        }} />
+        <Sidebar
+          view={view}
+          setView={setView}
+          myRole={isSuperAdmin && activeOrgId ? 'Admin' : myRole}
+          userEmail={user?.email}
+          onLogout={handleLogout}
+          allOrgs={allOrgs}
+          activeOrgId={activeOrgId}
+          setActiveOrgId={setActiveOrgId}
+          onShowOnboarding={() => {
+            if (user?.email?.toLowerCase() === 'info@sotara.co.uk') {
+              setShowOnboarding(true);
+            } else {
+              alert('Only info@sotara.co.uk can create organizations');
+            }
+          }}
+        />
         <div className="main-content" style={{ paddingTop: showInactivityWarning ? '60px' : undefined }}>
+          {/* God mode banner — shown when super admin is viewing a client org */}
+          {isSuperAdmin && activeOrgId && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              background: 'linear-gradient(90deg, #78350f 0%, #92400e 100%)',
+              color: '#FEF3C7',
+              padding: '8px 16px',
+              marginBottom: 16,
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              border: '1px solid rgba(251,191,36,0.4)',
+              boxShadow: '0 2px 8px rgba(251,191,36,0.2)',
+            }}>
+              <span style={{ fontSize: 16 }}>🛡️</span>
+              God Mode — Viewing <strong style={{ color: '#FCD34D' }}>{allOrgs.find(o => o.id === activeOrgId)?.name || activeOrgId}</strong> as Admin
+              <button
+                onClick={() => setActiveOrgId(null)}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'rgba(251,191,36,0.2)',
+                  border: '1px solid rgba(251,191,36,0.4)',
+                  color: '#FCD34D',
+                  borderRadius: 6,
+                  padding: '2px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                ✕ Exit
+              </button>
+            </div>
+          )}
           {activeAnnouncement && (
             <div className="announcement-banner mb-6">
               <Megaphone size={20} />
@@ -1319,7 +1384,7 @@ const App = () => {
                 requests={requests} staffList={staffList} termDates={termDates}
                 schoolTerms={schoolTerms} bankHolidays={bankHolidays}
                 isAdmin={isAdmin} user={user} deleteRequest={deleteRequest}
-                myRole={myRole} myDept={myDept} />
+                myRole={effectiveRole} myDept={myDept} />
             </div>
           )}
           {view === 'analytics' && canManage && analyticsData && (
