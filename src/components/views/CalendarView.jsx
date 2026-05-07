@@ -25,26 +25,20 @@ const CalendarView = ({
   selectedDate, setSelectedDate, requests, staffList,
   termDates, schoolTerms, bankHolidays, isAdmin, user, deleteRequest, myRole, myDept
 }) => {
-  // Determine if user can see a specific leave request based on their role
+  // Visibility rules:
+  //   Admin     → everything
+  //   Dept Head → all leave types, but only their department
+  //   Staff     → Annual Leave + School Holiday Worked only (no medical, sick, etc.)
   const canSeeRequest = (request) => {
-    // Types of leave that should be hidden from regular staff
-    const restrictedLeaveTypes = ['Sick Leave', 'Compassionate', 'Medical Appt'];
-
-    // Admins can see everything
     if (isAdmin) return true;
 
-    // For restricted leave types:
-    if (restrictedLeaveTypes.includes(request.type)) {
-      // Dept Heads can see restricted leaves only for their own department
-      if (myRole === 'Dept Head') {
-        return request.department === myDept;
-      }
-      // Regular staff cannot see restricted leaves
-      return false;
+    if (myRole === 'Dept Head') {
+      return request.department === myDept;
     }
 
-    // Non-restricted leaves are visible to everyone
-    return true;
+    // Regular staff: only Annual Leave and School Holiday Worked are visible
+    const staffVisibleTypes = ['Annual Leave', CONFIG.termTimeWorkType];
+    return staffVisibleTypes.includes(request.type);
   };
 
   const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
@@ -228,7 +222,7 @@ const CalendarView = ({
                   ))}
 
                   {/* Staff Requests */}
-                  {requests.filter(r => r.status === 'Approved' && r.startDate <= selectedDate && (r.endDate || r.startDate) >= selectedDate)
+                  {requests.filter(r => r.status === 'Approved' && r.startDate <= selectedDate && (r.endDate || r.startDate) >= selectedDate && canSeeRequest(r))
                     .map((r, idx) => {
                       const col = leaveColour(r.type);
                       return (
@@ -252,7 +246,7 @@ const CalendarView = ({
                   )})}
 
                   {/* Empty State */}
-                  {requests.filter(r => r.status === 'Approved' && r.startDate <= selectedDate && (r.endDate || r.startDate) >= selectedDate).length === 0 && bankHolidays.filter(h => h.date === selectedDate).length === 0 && (
+                  {requests.filter(r => r.status === 'Approved' && r.startDate <= selectedDate && (r.endDate || r.startDate) >= selectedDate && canSeeRequest(r)).length === 0 && bankHolidays.filter(h => h.date === selectedDate).length === 0 && (
                     <div className="col-span-full py-10 text-center text-slate-400 font-medium bg-white rounded-xl border border-dashed border-slate-300">
                       <Calendar size={32} className="mx-auto mb-3 text-slate-300" />
                       No leave, events, or work records for this date.
