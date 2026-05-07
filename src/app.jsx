@@ -7,8 +7,6 @@ import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail }
 import { useAuth } from './services/auth.js';
 import { setSupabaseSession, supabase } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
-import { createLeaveEvent, deleteLeaveEvent, syncHolidaysToSharedCalendar } from './services/graphCalendar.js';
-import { syncSingleHoliday, syncOrganizationHolidays } from './services/holidaySync.js';
 import {
   sendApprovalNotification,
   sendRejectionNotification,
@@ -231,25 +229,6 @@ const App = () => {
         const settings = await supabaseApi.settingsApi.getSettings(orgId);
         if (!isUnmounting) {
           setSystemSettings(prev => ({ ...prev, ...settings }));
-        }
-
-        // 📅 Sync holidays to shared Outlook calendar (runs once on app load)
-        if (user?.azureToken) {
-          // Fetch organization to get notification email
-          const { data: orgData } = await supabase
-            .from('organizations')
-            .select('notificationemail')
-            .eq('id', orgId)
-            .single();
-
-          if (orgData?.notificationemail) {
-            syncHolidaysToSharedCalendar(
-              orgData.notificationemail,
-              termDatesList,
-              schoolTermsList,
-              user.azureToken
-            ).catch(err => console.warn('Holiday sync optional - skipped:', err.message));
-          }
         }
 
         setIsLoading(false);
@@ -616,39 +595,7 @@ const App = () => {
           reqForApproval.type
         );
 
-        // 📅 Push event to employee's Outlook calendar via Microsoft Graph
-        if (user.azureToken) {
-          const calResult = await createLeaveEvent(
-            reqForApproval.employeeEmail,
-            reqForApproval.employeeName,
-            reqForApproval.type,
-            reqForApproval.startDate,
-            reqForApproval.endDate,
-            user.azureToken
-          );
-
-          if (calResult.success && calResult.eventId) {
-            // Store the calendar event ID for future reference (e.g., if we need to delete it)
-            try {
-              await supabase
-                .from('mt_requests')
-                .update({ calendar_event_id: calResult.eventId })
-                .eq('id', id);
-              console.log(`✅ Calendar event ID stored: ${calResult.eventId}`);
-            } catch (err) {
-              console.warn('Failed to store calendar event ID:', err.message);
-            }
-          }
-        }
       } else if (status === 'Rejected') {
-        // Delete calendar event if one was created
-        if (reqForApproval.calendar_event_id && user.azureToken) {
-          await deleteLeaveEvent(
-            reqForApproval.employeeEmail,
-            reqForApproval.calendar_event_id,
-            user.azureToken
-          );
-        }
 
         await supabaseApi.requestsApi.rejectRequest(
           id,
@@ -1004,24 +951,6 @@ const App = () => {
       addNotification("Date Added");
       setNewTermDate({ description: '', date: '', type: 'Term Start' });
 
-      // 📅 Real-time sync to Outlook calendar
-      if (created?.id && user.azureToken) {
-        const orgData = await supabase
-          .from('organizations')
-          .select('notificationemail')
-          .eq('id', user.organization)
-          .single();
-
-        if (orgData.data?.notificationemail) {
-          syncSingleHoliday(
-            created.id,
-            user.organization,
-            user.azureToken,
-            orgData.data.notificationemail,
-            'create'
-          ).catch(err => console.warn('Holiday sync optional:', err.message));
-        }
-      }
     } catch (error) {
       console.error('Error adding term date:', error);
       addNotification("Error adding date");
@@ -1037,24 +966,6 @@ const App = () => {
         await supabaseApi.termDatesApi.deleteTermDate(id, user.organization);
         addNotification("Deleted");
 
-        // 📅 Real-time sync deletion to Outlook
-        if (holiday?.calendar_event_id && user.azureToken) {
-          const orgData = await supabase
-            .from('organizations')
-            .select('notificationemail')
-            .eq('id', user.organization)
-            .single();
-
-          if (orgData.data?.notificationemail) {
-            syncSingleHoliday(
-              id,
-              user.organization,
-              user.azureToken,
-              orgData.data.notificationemail,
-              'delete'
-            ).catch(err => console.warn('Holiday sync optional:', err.message));
-          }
-        }
       } catch (error) {
         console.error('Error deleting term date:', error);
         addNotification("Error deleting date");
