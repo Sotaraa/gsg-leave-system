@@ -54,23 +54,23 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
 
       console.log(`📝 Creating organization: ${formData.organizationName} (${orgId})`);
 
-      // Insert organization record with SSO config
+      // Insert organization record — column names must match DB (all lowercase)
       const { data, error } = await supabase
         .from('organizations')
         .insert({
           id: orgId,
           name: formData.organizationName,
           domain: domain,
-          superAdmin: formData.adminEmail,
-          isActive: true,
-          defaultAllowance: formData.defaultAllowance,
-          hoursPerDay: formData.hoursPerDay,
-          azureClientId: formData.azureClientId || null,
-          azureTenantId: formData.azureTenantId || null,
-          azureRedirectUri: `https://app.sotara.co.uk/auth/${orgId}`,
-          notificationEmail: formData.notificationEmail || formData.adminEmail,
-          useGraphApi: true,
-          ssoConfigured: !!(formData.azureClientId && formData.azureTenantId)
+          superadmin: formData.adminEmail,
+          isactive: true,
+          defaultallowance: formData.defaultAllowance,
+          hoursperday: formData.hoursPerDay,
+          azureclientid: formData.azureClientId || null,
+          azuretenantid: formData.azureTenantId || null,
+          azureredirecturi: `https://leavehub.sotara.co.uk`,
+          notificationemail: formData.notificationEmail || formData.adminEmail,
+          usegraphapi: true,
+          ssoconfigured: true   // M365 users work immediately via Sotara's shared app
         })
         .select();
 
@@ -119,35 +119,39 @@ Domain: ${domain}`
   // If not master admin, show access denied
   if (!isMasterAdmin) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-red-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <div className="backdrop-blur-xl bg-white/30 rounded-3xl p-8 shadow-2xl border border-white/40 text-center">
-            <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
-            <h1 className="text-2xl font-black text-slate-900 mb-2">Access Denied</h1>
-            <p className="text-slate-600 mb-6">Only info@sotara.co.uk can access this page.</p>
-            <p className="text-sm text-slate-500">Current user: {user?.email || 'Not signed in'}</p>
-          </div>
-        </div>
+      <div className="p-6 max-w-md mx-auto text-center">
+        <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
+        <h1 className="text-2xl font-black text-slate-900 mb-2">Access Denied</h1>
+        <p className="text-slate-600 mb-2">Only info@sotara.co.uk can access this page.</p>
+        <p className="text-sm text-slate-400">Signed in as: {user?.email || 'Not signed in'}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 p-4">
-      <div className="max-w-md mx-auto">
-        {/* Header */}
-        <div className="mb-4">
-          <h1 className="text-2xl font-black text-slate-900 mb-1 flex items-center gap-2">
-            <Lock className="text-blue-600" size={24} />
-            Organization Onboarding
-          </h1>
-          <p className="text-xs text-slate-600">Create new schools/organizations for Sotara LeaveHub</p>
+    <div className="p-6 max-w-2xl mx-auto">
+      {/* Header */}
+      <div className="mb-5">
+        <h1 className="text-2xl font-black text-slate-900 mb-1 flex items-center gap-2">
+          <Lock className="text-blue-600" size={24} />
+          Organization Onboarding
+        </h1>
+        <p className="text-sm text-slate-500">Create new schools/organizations for Sotara LeaveHub</p>
+      </div>
+
+      {/* M365 info banner */}
+      <div className="mb-5 p-3 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-start gap-2">
+        <span className="text-lg leading-none">🔑</span>
+        <div>
+          <strong>Microsoft 365 clients sign in seamlessly</strong> — no Azure AD configuration needed.
+          Just create the org below and the admin can log in immediately with their M365 account.
         </div>
+      </div>
 
         {/* Organization Creation Form */}
         {step === 'form' && (
-          <div className="backdrop-blur-xl bg-white/30 rounded-3xl p-5 shadow-2xl border border-white/40">
-            <h2 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
               <Plus size={20} className="text-blue-600" />
               Create New Organization
             </h2>
@@ -370,7 +374,6 @@ Domain: ${domain}`
             </form>
           </div>
         )}
-      </div>
     </div>
   );
 };
