@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { logger } from './utils/logger.js';
 
 const SUPABASE_URL = 'https://uzmdqryhzijkmwedvwka.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV6bWRxcnloemlqa213ZWR2d2thIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjM2MzMsImV4cCI6MjA5MjkzOTYzM30.O249bdKDyI4IUFRD5pdKIvtxYF1ihR0uQ2SOVBvl3qc';
@@ -34,10 +35,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 export const setSupabaseSession = (session) => {
   if (session && session.access_token) {
     supabase.auth.setSession(session);
-    console.log('🔐 Supabase client upgraded to authenticated JWT');
-    console.log(`   User: ${session.user?.email || 'unknown'}`);
-    console.log(`   auth.uid(): ${session.user?.id || 'null'}`);
-    console.log('   RLS policies are now active');
+    logger.log('Supabase client upgraded to authenticated JWT');
+    logger.log(`   User: ${session.user?.email || 'unknown'}`);
+    logger.log(`   auth.uid(): ${session.user?.id || 'null'}`);
+    logger.log('   RLS policies are now active');
   } else {
     console.warn('⚠️ setSupabaseSession called with invalid session');
   }

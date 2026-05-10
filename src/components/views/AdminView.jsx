@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2, Archive, RotateCcw, Download, Upload, AlertCircle, CheckCircle2,
-         Users, ClipboardList, Settings as SettingsIcon, Database } from 'lucide-react';
+         Users, ClipboardList, Settings as SettingsIcon, Database, Mail } from 'lucide-react';
 import CONFIG from '../../config.js';
 import { formatDateUK, getTermForDate } from '../../utils/helpers.js';
 import { TypeNote } from './EmployeeView.jsx';
+import { getRecentEmailLog } from '../../services/emailLog.js';
 
 const AdminView = ({
   staffList, requests, departments, termDates, announcements,
@@ -104,7 +105,22 @@ const AdminView = ({
     { key: 'requests', label: 'Requests',       Icon: ClipboardList },
     { key: 'settings', label: 'Settings',       Icon: SettingsIcon  },
     { key: 'data',     label: 'Data & Import',  Icon: Database      },
+    { key: 'email',    label: 'Email Activity', Icon: Mail          },
   ];
+
+  // ── Email Activity log ───────────────────────────────────────────────
+  const [emailLog, setEmailLog] = useState([]);
+  const [emailLogLoading, setEmailLogLoading] = useState(false);
+  const refreshEmailLog = async () => {
+    if (!organizationId) return;
+    setEmailLogLoading(true);
+    setEmailLog(await getRecentEmailLog(organizationId, 100));
+    setEmailLogLoading(false);
+  };
+  useEffect(() => {
+    if (adminTab === 'email') refreshEmailLog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminTab, organizationId]);
 
   /* pending request count badge */
   const pendingCount = requests.filter(r => r.status === 'Pending').length;
@@ -930,6 +946,81 @@ firstname.lastname@gardenerschools.com,Annual Leave,2025-11-05,2025-11-06,2`}
             </div>
           )}
         </div>
+      </div>
+    )}
+
+    {/* ════ EMAIL ACTIVITY TAB ════ */}
+    {adminTab === 'email' && (
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold flex items-center gap-2">
+              <Mail size={16} className="text-emerald-700" /> Email Activity
+            </h3>
+            <p className="text-xs text-gray-500">
+              Audit log of every notification email this app has tried to send. Last 100 entries.
+            </p>
+          </div>
+          <button
+            onClick={refreshEmailLog}
+            disabled={emailLogLoading}
+            className="btn btn-secondary text-xs"
+          >
+            {emailLogLoading ? 'Loading…' : '🔄 Refresh'}
+          </button>
+        </div>
+
+        {emailLog.length === 0 && !emailLogLoading && (
+          <p className="text-sm text-gray-500 italic">No email activity yet.</p>
+        )}
+
+        {emailLog.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th className="p-2">When</th>
+                  <th className="p-2">Status</th>
+                  <th className="p-2">Context</th>
+                  <th className="p-2">Recipients</th>
+                  <th className="p-2">Subject / Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emailLog.map(row => {
+                  const statusStyle = {
+                    sent:           'bg-emerald-100 text-emerald-700',
+                    failed:         'bg-red-100 text-red-700',
+                    no_recipients:  'bg-amber-100 text-amber-700',
+                    no_token:       'bg-amber-100 text-amber-700',
+                    skipped:        'bg-gray-100 text-gray-600',
+                  }[row.status] || 'bg-gray-100 text-gray-600';
+                  return (
+                    <tr key={row.id} className="border-t">
+                      <td className="p-2 whitespace-nowrap text-gray-600">
+                        {new Date(row.sent_at).toLocaleString('en-GB')}
+                      </td>
+                      <td className="p-2">
+                        <span className={`px-2 py-0.5 rounded font-semibold ${statusStyle}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="p-2 text-gray-700">{row.context || '—'}</td>
+                      <td className="p-2 text-gray-700">
+                        {(row.recipients || []).join(', ') || '—'}
+                      </td>
+                      <td className="p-2 text-gray-700">
+                        {row.error_message
+                          ? <span className="text-red-600">{row.error_message}</span>
+                          : (row.subject || '—')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     )}
 

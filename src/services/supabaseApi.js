@@ -13,6 +13,7 @@ import {
   sendRejectionNotification,
   sendSubmissionNotification
 } from './emailNotifications';
+import { logEmail } from './emailLog';
 
 /**
  * DATABASE FIELD MAPPING
@@ -231,7 +232,8 @@ export const requestsApi = {
   approveRequest: async (requestId, approvalSubType, organizationId, azureToken, employeeEmail, employeeName, requestType) => {
     try {
       const updateData = { status: 'Approved' };
-      if (approvalSubType) updateData.approvalSubType = approvalSubType;
+      // DB column is lowercase — must use snake/lowercase to match Postgres
+      if (approvalSubType) updateData.approvalsubtype = approvalSubType;
 
       const { data, error } = await supabase
         .from('mt_requests')
@@ -242,35 +244,38 @@ export const requestsApi = {
 
       if (error) throw error;
 
+      const subject = `Leave ${requestType} Approved`;
       // Send approval email if we have the necessary info
       if (azureToken && employeeEmail && employeeName && requestType) {
         try {
-          console.log(`📧 Attempting to send approval notification to ${employeeEmail}...`);
           const emailResult = await sendApprovalNotification(
-            employeeEmail,
-            employeeName,
-            requestType,
-            organizationId,
-            azureToken
+            employeeEmail, employeeName, requestType, organizationId, azureToken
           );
-
-          if (emailResult.success) {
-            console.log(`✅ Approval notification sent to ${employeeEmail}`);
-          } else {
-            console.warn(`⚠️ Failed to send approval email: ${emailResult.error}`);
-          }
+          await logEmail({
+            organizationId, recipients: [employeeEmail], subject,
+            context: 'approval', requestId,
+            status: emailResult?.success ? 'sent' : 'failed',
+            errorMessage: emailResult?.success ? null : (emailResult?.error || null),
+          });
         } catch (emailError) {
-          console.error(`❌ Exception sending approval email: ${emailError.message}`);
-          // Don't fail the request approval if email fails
+          console.error('Exception sending approval email:', emailError.message);
+          await logEmail({
+            organizationId, recipients: [employeeEmail], subject,
+            context: 'approval', requestId, status: 'failed',
+            errorMessage: emailError.message,
+          });
         }
       } else {
-        if (!azureToken) console.warn(`⚠️ No azureToken available for email notifications`);
-        if (!employeeEmail) console.warn(`⚠️ No employeeEmail for notifications`);
+        await logEmail({
+          organizationId, recipients: employeeEmail ? [employeeEmail] : [], subject,
+          context: 'approval', requestId,
+          status: !azureToken ? 'no_token' : 'skipped',
+        });
       }
 
       return data?.[0];
     } catch (error) {
-      console.error('❌ Error approving request:', error);
+      console.error('Error approving request:', error);
       throw error;
     }
   },
@@ -289,36 +294,38 @@ export const requestsApi = {
 
       if (error) throw error;
 
-      // Send rejection email if we have the necessary info
+      const subject = `Leave ${requestType} Rejected`;
       if (azureToken && employeeEmail && employeeName && requestType) {
         try {
-          console.log(`📧 Attempting to send rejection notification to ${employeeEmail}...`);
           const emailResult = await sendRejectionNotification(
-            employeeEmail,
-            employeeName,
-            requestType,
-            reason || 'Not specified',
-            organizationId,
-            azureToken
+            employeeEmail, employeeName, requestType, reason || 'Not specified',
+            organizationId, azureToken
           );
-
-          if (emailResult.success) {
-            console.log(`✅ Rejection notification sent to ${employeeEmail}`);
-          } else {
-            console.warn(`⚠️ Failed to send rejection email: ${emailResult.error}`);
-          }
+          await logEmail({
+            organizationId, recipients: [employeeEmail], subject,
+            context: 'rejection', requestId,
+            status: emailResult?.success ? 'sent' : 'failed',
+            errorMessage: emailResult?.success ? null : (emailResult?.error || null),
+          });
         } catch (emailError) {
-          console.error(`❌ Exception sending rejection email: ${emailError.message}`);
-          // Don't fail the request rejection if email fails
+          console.error('Exception sending rejection email:', emailError.message);
+          await logEmail({
+            organizationId, recipients: [employeeEmail], subject,
+            context: 'rejection', requestId, status: 'failed',
+            errorMessage: emailError.message,
+          });
         }
       } else {
-        if (!azureToken) console.warn(`⚠️ No azureToken available for email notifications`);
-        if (!employeeEmail) console.warn(`⚠️ No employeeEmail for notifications`);
+        await logEmail({
+          organizationId, recipients: employeeEmail ? [employeeEmail] : [], subject,
+          context: 'rejection', requestId,
+          status: !azureToken ? 'no_token' : 'skipped',
+        });
       }
 
       return data?.[0];
     } catch (error) {
-      console.error('❌ Error rejecting request:', error);
+      console.error('Error rejecting request:', error);
       throw error;
     }
   },

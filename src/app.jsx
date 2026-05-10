@@ -4,6 +4,7 @@ import { logoutEntra } from './services/entraAuth';
 
 import CONFIG from './config.js';
 import { generateUKBankHolidays, calculateWorkingDays, formatDateUK, sendEmail } from './utils/helpers.js';
+import { logger } from './utils/logger.js';
 import { useAuth } from './services/auth.js';
 import { setSupabaseSession, supabase } from './supabase.js';
 import * as supabaseApi from './services/supabaseApi.js';
@@ -12,6 +13,7 @@ import {
   sendRejectionNotification,
   sendSubmissionNotification
 } from './services/emailNotifications.js';
+import { logEmail } from './services/emailLog.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { OrganizationProvider } from './contexts/OrganizationContext.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
@@ -189,7 +191,7 @@ const App = () => {
     (async () => {
       try {
         // Load initial data
-        console.log(`📊 Loading data for organization: ${orgId}${godMode ? ' (God Mode)' : ''}`);
+        logger.log(`Loading data for organization: ${orgId}${godMode ? ' (God Mode)' : ''}`);
 
         // Load staff
         const staffList = await supabaseApi.staffApi.getStaffList(orgId);
@@ -254,7 +256,7 @@ const App = () => {
         }
 
         setIsLoading(false);
-        console.log(`✅ Data loaded for ${orgId}`);
+        logger.log(`Data loaded for ${orgId}`);
 
         // Setup real-time listeners
         if (!isUnmounting) {
@@ -414,16 +416,23 @@ const App = () => {
   }, [requests, currentHolidayYear, systemSettings]);
 
   const updateStaffTarget = async (staffId, days) => {
-    await updateDoc(doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'staff', staffId), { termTimeDaysTarget: days });
+    try {
+      await supabaseApi.staffApi.updateStaffTarget(staffId, days, effectiveOrgId);
+    } catch (err) {
+      console.error('Error updating staff target:', err);
+      addNotification("Error updating target");
+    }
   };
 
   const updateSystemSettings = async (updates) => {
-    await setDoc(
-      doc(db, 'artifacts', 'gardener-schools-leave-v1', 'public', 'data', 'settings', 'global'),
-      updates,
-      { merge: true }
-    );
-    addNotification("Settings Saved");
+    try {
+      await supabaseApi.settingsApi.updateSettings(updates, effectiveOrgId);
+      setSystemSettings(prev => ({ ...prev, ...updates }));
+      addNotification("Settings Saved");
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      addNotification("Error saving settings");
+    }
   };
 
   const getYearStartForClosingDate = useCallback((closingDateStr) => {
@@ -584,16 +593,18 @@ const App = () => {
       ...(isInSchoolHoliday ? [{ label: 'School Holiday',  value: 'This request overlaps a recorded school holiday period.', highlight: 'amber' }] : []),
     ];
 
+    const emailSubject = `New Leave Request: ${user.displayName}`;
     if (!graphToken) {
-      console.warn('⚠️ No graph token — email notification skipped');
+      console.warn('No graph token — email notification skipped');
       addNotification("Request submitted (email notification unavailable — please notify your manager)");
+      logEmail({ organizationId: effectiveOrgId, triggeredBy: user.email, recipients: [], subject: emailSubject, context: 'submission', status: 'no_token' });
     } else if (recipients.length === 0) {
-      console.warn('⚠️ No recipients found for dept:', myDept, '— email notification skipped');
+      console.warn('No recipients found for dept:', myDept, '— email notification skipped');
       addNotification("Request submitted (no approver found — please contact your manager)");
+      logEmail({ organizationId: effectiveOrgId, triggeredBy: user.email, recipients: [], subject: emailSubject, context: 'submission', status: 'no_recipients' });
     } else {
-      console.log(`📧 Sending leave notification to: ${recipients.join(', ')}`);
       const emailSent = await sendEmail(graphToken, recipients,
-        `New Leave Request: ${user.displayName}`,
+        emailSubject,
         '🗓️ New Leave Request',
         '#064e3b',
         [
@@ -611,8 +622,10 @@ const App = () => {
       );
       if (emailSent) {
         addNotification(`Notification sent to ${recipients.length} approver${recipients.length > 1 ? 's' : ''}`);
+        logEmail({ organizationId: effectiveOrgId, triggeredBy: user.email, recipients, subject: emailSubject, context: 'submission', status: 'sent' });
       } else {
         addNotification("Request submitted (email notification failed — please notify your manager)");
+        logEmail({ organizationId: effectiveOrgId, triggeredBy: user.email, recipients, subject: emailSubject, context: 'submission', status: 'failed' });
       }
     }
   };
@@ -693,7 +706,7 @@ const App = () => {
       }
 
       // Log the approval for audit trail
-      console.log(`✅ Request ${status}: ${req.employeeName} (${req.type}) - Email: ${user.azureToken ? 'sent' : 'no token'}`);
+      logger.log(`Request ${status}: ${req.employeeName} (${req.type}) - Email: ${user.azureToken ? 'sent' : 'no token'}`);
     } catch (error) {
       console.error('❌ Error processing approval:', error);
       addNotification(`Error: ${error.message}`);
@@ -850,12 +863,18 @@ const App = () => {
           results.errors.push(`${staff.name} (${rec.startDate}): 0 working days — is this a weekend or bank holiday?`);
           results.skipped++; continue;
         }
-        await addDoc(subCol('requests'), {
-          employeeName: staff.name, employeeEmail: staff.email, department: staff.department,
-          type: rec.type || 'Annual Leave', startDate: rec.startDate, endDate,
-          isHalfDay: false, status: 'Approved', daysCount: days,
-          submittedAt: new Date().toISOString(), importedSilently: true
-        });
+        await supabaseApi.requestsApi.submitRequest({
+          employeeName: staff.name,
+          employeeEmail: staff.email,
+          department: staff.department,
+          type: rec.type || 'Annual Leave',
+          startDate: rec.startDate,
+          endDate,
+          isHalfDay: false,
+          status: 'Approved',
+          daysCount: days,
+          importedSilently: true
+        }, effectiveOrgId);
         results.imported++;
       } catch (err) {
         results.errors.push(`${rec.email} (${rec.startDate}): ${err.message}`);

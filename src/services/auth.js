@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import * as msal from '@azure/msal-browser';
 import { getEntraUser, getMsalInstance } from './entraAuth';
+import { logger } from '../utils/logger.js';
 
 /**
  * Get organization's Azure AD configuration from Supabase
@@ -62,7 +63,7 @@ const initializeMSAL = (config) => {
         loggerOptions: {
           loggerCallback: (level, message, containsPii) => {
             if (containsPii) return;
-            console.log(`[MSAL] ${message}`);
+            logger.log(`[MSAL] ${message}`);
           }
         }
       }
@@ -101,7 +102,7 @@ const ensureUserProfile = async (email, organizationId, role = 'Staff') => {
       .single();
 
     if (existingProfile) {
-      console.log('✅ User profile already exists');
+      logger.log('✅ User profile already exists');
       return;
     }
 
@@ -131,7 +132,7 @@ const ensureUserProfile = async (email, organizationId, role = 'Staff') => {
       return;
     }
 
-    console.log(`✅ User profile created for ${email} in organization ${organizationId}`);
+    logger.log(`✅ User profile created for ${email} in organization ${organizationId}`);
   } catch (error) {
     console.error('Error in ensureUserProfile:', error);
   }
@@ -149,7 +150,7 @@ const ensureUserProfile = async (email, organizationId, role = 'Staff') => {
  */
 const authenticateWithSupabase = async (email, organizationId) => {
   try {
-    console.log(`🔐 Authenticating with Supabase Auth: ${email}`);
+    logger.log(`🔐 Authenticating with Supabase Auth: ${email}`);
 
     // Generate deterministic password from email
     // (We use this because users authenticate via MSAL, not passwords)
@@ -177,7 +178,7 @@ const authenticateWithSupabase = async (email, organizationId) => {
 
     if (signUpError) {
       // If signup failed (user likely exists), try signing in
-      console.log(`📝 Sign-up returned: ${signUpError.message}, attempting sign-in...`);
+      logger.log(`📝 Sign-up returned: ${signUpError.message}, attempting sign-in...`);
 
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: email,
@@ -195,7 +196,7 @@ const authenticateWithSupabase = async (email, organizationId) => {
       session = signUpData.session;
       authUser = signUpData.user;
       if (authUser) {
-        console.log(`✅ New Supabase Auth user created: ${authUser.id}`);
+        logger.log(`✅ New Supabase Auth user created: ${authUser.id}`);
       }
     }
 
@@ -233,7 +234,7 @@ const authenticateWithSupabase = async (email, organizationId) => {
         console.error('⚠️ Failed to update user profile:', profileError);
         // Don't throw - profile auto-creation trigger should have created placeholder
       } else {
-        console.log(`✅ User profile updated: org=${organizationId}, role=${userRole}, superAdmin=${isSuperAdmin}`);
+        logger.log(`✅ User profile updated: org=${organizationId}, role=${userRole}, superAdmin=${isSuperAdmin}`);
       }
     }
 
@@ -315,7 +316,7 @@ export const useAuth = () => {
           // ─────────────────────────────────────────────────────────────────
           // Extract email domain for organization lookup
           const emailDomain = '@' + storedEmail.split('@')[1];
-          console.log(`🔍 Looking up organization for domain: ${emailDomain}`);
+          logger.log(`🔍 Looking up organization for domain: ${emailDomain}`);
 
           // Step 1: Check Supabase organizations table
           const { data: org, error: orgError } = await supabase
@@ -326,14 +327,14 @@ export const useAuth = () => {
 
           if (org && !orgError) {
             // Organization found in Supabase - this is a multi-tenant user
-            console.log(`✅ Organization found: ${org.name}`);
+            logger.log(`✅ Organization found: ${org.name}`);
 
             // ─── NEW: AUTHENTICATE WITH SUPABASE AUTH ─────────────────────────────────
             // This links the MSAL-verified user to Supabase Auth, enabling RLS policies
             const supabaseAuth = await authenticateWithSupabase(storedEmail, org.id);
 
             if (supabaseAuth.success && supabaseAuth.session) {
-              console.log('✅ Supabase Auth authentication successful');
+              logger.log('✅ Supabase Auth authentication successful');
               setSupabaseSession(supabaseAuth.session);
               // Store session in localStorage for use by supabaseApi.js
               localStorage.setItem('SUPABASE_SESSION', JSON.stringify(supabaseAuth.session));
@@ -357,7 +358,7 @@ export const useAuth = () => {
                     account: accounts[0]
                   });
                   azureToken = tokenResponse.accessToken;
-                  console.log(`✅ Azure token retrieved from Sotara MSAL`);
+                  logger.log(`✅ Azure token retrieved from Sotara MSAL`);
                 }
               }
             } catch (tokenError) {
@@ -374,7 +375,7 @@ export const useAuth = () => {
 
             if (staffData && !staffError) {
               // User found in org staff table
-              console.log(`✅ User found in organization: ${staffData.name}`);
+              logger.log(`✅ User found in organization: ${staffData.name}`);
 
               setUser({
                 uid: staffData.id,
@@ -391,7 +392,7 @@ export const useAuth = () => {
               });
             } else {
               // Organization exists but user not in staff table
-              console.log(`⚠️ Organization found but user not in staff table, using guest mode`);
+              logger.log(`⚠️ Organization found but user not in staff table, using guest mode`);
               const displayName = storedName || storedEmail.split('@')[0];
 
               setUser({
@@ -421,7 +422,7 @@ export const useAuth = () => {
           setAuthMethod(method);
         } else {
           // No email in localStorage - user must sign in via LoginScreen
-          console.log('ℹ️ No email in localStorage, showing login screen');
+          logger.log('ℹ️ No email in localStorage, showing login screen');
           setUser(null);
         }
       } catch (error) {
