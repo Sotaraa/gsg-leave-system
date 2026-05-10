@@ -179,13 +179,17 @@ const App = () => {
     const orgId = effectiveOrgId || user.organization;
     if (!orgId) return;
 
+    // In God Mode the super admin is browsing a client org — don't overwrite
+    // their own personal profile state (role, dept, allowance, working days).
+    const godMode = isSuperAdmin && activeOrgId;
+
     const subscriptions = [];
     let isUnmounting = false;
 
     (async () => {
       try {
         // Load initial data
-        console.log(`📊 Loading data for organization: ${orgId}`);
+        console.log(`📊 Loading data for organization: ${orgId}${godMode ? ' (God Mode)' : ''}`);
 
         // Load staff
         const staffList = await supabaseApi.staffApi.getStaffList(orgId);
@@ -193,19 +197,22 @@ const App = () => {
           const sortedStaff = staffList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
           setStaffList(sortedStaff);
 
-          const profile = sortedStaff.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
-          const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
-          if (isSuper) setMyRole('Admin');
-          else if (profile) setMyRole(profile.role);
-          else setMyRole('Staff');
+          // Only update personal profile state when NOT in God Mode
+          if (!godMode) {
+            const profile = sortedStaff.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
+            const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
+            if (isSuper) setMyRole('Admin');
+            else if (profile) setMyRole(profile.role);
+            else setMyRole('Staff');
 
-          if (profile) {
-            setMyDept(profile.department || '');
-            setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
-            setAmITermTime(profile.isTermTime || false);
-            setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
-            if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
-            else setFormData(p => ({ ...p, type: 'Annual Leave' }));
+            if (profile) {
+              setMyDept(profile.department || '');
+              setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
+              setAmITermTime(profile.isTermTime || false);
+              setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
+              if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
+              else setFormData(p => ({ ...p, type: 'Annual Leave' }));
+            }
           }
         }
 
@@ -290,7 +297,8 @@ const App = () => {
       isUnmounting = true;
       supabaseApi.cleanupRealtimeListeners(subscriptions);
     };
-  }, [user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, effectiveOrgId]);
 
   const addNotification = (msg) => {
     const id = Date.now();
