@@ -28,6 +28,7 @@ import AnalyticsView from './components/views/AnalyticsView.jsx';
 import OnboardingAdmin from './components/OnboardingAdmin.jsx';
 import { useInactivityTimer } from './hooks/useInactivityTimer.js';
 import { useOrgData } from './hooks/useOrgData.js';
+import { buildOfflineSnapshotHtml, downloadSnapshotHtml } from './services/offlineSnapshot.js';
 import {
   computeHolidayYear,
   getLeaveTaken as calcLeaveTaken,
@@ -190,6 +191,34 @@ const App = () => {
     const id = Date.now();
     setNotifications(p => [...p, { id, msg }]);
     setTimeout(() => setNotifications(p => p.filter(n => n.id !== id)), 4000);
+  };
+
+  // ─── OFFLINE SNAPSHOT (Sotara super admin only) ──────────────────────────
+  // Generates a self-contained HTML report of the active org so it can be
+  // emailed to the client during downtime / outage. Uses whatever data is
+  // currently loaded — useOrgData has already fetched everything on entry.
+  const generateOfflineSnapshot = () => {
+    if (!isSuperAdmin || !activeOrgId) return;
+    const org = allOrgs.find(o => o.id === activeOrgId);
+    if (!org) {
+      addNotification('Could not find organisation data');
+      return;
+    }
+    try {
+      const html = buildOfflineSnapshotHtml({
+        organization: org,
+        staffList,
+        requests,
+        termDates,
+        holidayYear: currentHolidayYear,
+        generatedBy: user?.email,
+      });
+      downloadSnapshotHtml(html, org.id);
+      addNotification(`Snapshot downloaded for ${org.name}`);
+    } catch (err) {
+      console.error('Snapshot generation failed:', err);
+      addNotification('Failed to generate snapshot');
+    }
   };
 
   // Email recipient helpers live in services/notificationRecipients.js
@@ -1095,9 +1124,26 @@ const App = () => {
               <span style={{ fontSize: 16 }}>🛡️</span>
               God Mode — Viewing <strong style={{ color: '#FCD34D' }}>{allOrgs.find(o => o.id === activeOrgId)?.name || activeOrgId}</strong> as Admin
               <button
-                onClick={() => setActiveOrgId(null)}
+                onClick={generateOfflineSnapshot}
+                title="Download a self-contained HTML snapshot for this client (use during downtime)"
                 style={{
                   marginLeft: 'auto',
+                  background: 'rgba(251,191,36,0.2)',
+                  border: '1px solid rgba(251,191,36,0.4)',
+                  color: '#FCD34D',
+                  borderRadius: 6,
+                  padding: '2px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                📥 Download Snapshot
+              </button>
+              <button
+                onClick={() => setActiveOrgId(null)}
+                style={{
                   background: 'rgba(251,191,36,0.2)',
                   border: '1px solid rgba(251,191,36,0.4)',
                   color: '#FCD34D',
