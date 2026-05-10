@@ -906,32 +906,16 @@ export const createRealtimeListener = (table, organizationId, callback) => {
  */
 export const setupRealtimeListeners = (organizationId, callbacks) => {
   const subscriptions = [];
-
-  // Staff listener
-  if (callbacks.onStaffChange) {
-    subscriptions.push(createRealtimeListener('mt_staff', organizationId, callbacks.onStaffChange));
-  }
-
-  // Requests listener
-  if (callbacks.onRequestsChange) {
-    subscriptions.push(createRealtimeListener('mt_requests', organizationId, callbacks.onRequestsChange));
-  }
-
-  // Departments listener
-  if (callbacks.onDepartmentsChange) {
-    subscriptions.push(createRealtimeListener('mt_departments', organizationId, callbacks.onDepartmentsChange));
-  }
-
-  // Settings listener
-  if (callbacks.onSettingsChange) {
-    subscriptions.push(createRealtimeListener('mt_settings', organizationId, callbacks.onSettingsChange));
-  }
-
-  // Term dates listener
-  if (callbacks.onTermDatesChange) {
-    subscriptions.push(createRealtimeListener('mt_termdates', organizationId, callbacks.onTermDatesChange));
-  }
-
+  const wire = (table, cb) => {
+    if (cb) subscriptions.push(createRealtimeListener(table, organizationId, cb));
+  };
+  wire('mt_staff',         callbacks.onStaffChange);
+  wire('mt_requests',      callbacks.onRequestsChange);
+  wire('mt_departments',   callbacks.onDepartmentsChange);
+  wire('mt_settings',      callbacks.onSettingsChange);
+  wire('mt_termdates',     callbacks.onTermDatesChange);
+  wire('mt_schoolterms',   callbacks.onSchoolTermsChange);
+  wire('mt_announcements', callbacks.onAnnouncementsChange);
   return subscriptions;
 };
 

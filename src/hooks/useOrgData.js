@@ -76,7 +76,8 @@ export const useOrgData = (user, effectiveOrgId) => {
         setIsLoading(false);
         logger.log(`Data loaded for ${orgId}`);
 
-        // Real-time listeners
+        // Real-time listeners — every org-scoped table is wired up so the UI
+        // updates instantly when data changes (no manual refresh needed).
         const realtimeSubs = supabaseApi.setupRealtimeListeners(orgId, {
           onStaffChange: async () => {
             const updated = await supabaseApi.staffApi.getStaffList(orgId);
@@ -95,6 +96,20 @@ export const useOrgData = (user, effectiveOrgId) => {
           onTermDatesChange: async () => {
             const updated = await supabaseApi.termDatesApi.getTermDates(orgId);
             if (!isUnmounting) setTermDates(updated);
+          },
+          onSchoolTermsChange: async () => {
+            const updated = await supabaseApi.schoolTermsApi.getSchoolTerms(orgId);
+            if (!isUnmounting) {
+              setSchoolTerms(updated.sort((a, b) => (a.academicYear || '').localeCompare(b.academicYear || '')));
+            }
+          },
+          onAnnouncementsChange: async () => {
+            const updated = await supabaseApi.announcementsApi.getAnnouncements(orgId);
+            if (!isUnmounting) setAnnouncements(updated);
+          },
+          onSettingsChange: async () => {
+            const updated = await supabaseApi.settingsApi.getSettings(orgId);
+            if (!isUnmounting) setSystemSettings(prev => ({ ...prev, ...updated }));
           },
         });
         subscriptions.push(...realtimeSubs);
