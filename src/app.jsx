@@ -28,6 +28,7 @@ import AnalyticsView from './components/views/AnalyticsView.jsx';
 import OnboardingAdmin from './components/OnboardingAdmin.jsx';
 import { useInactivityTimer } from './hooks/useInactivityTimer.js';
 import { useOrgData } from './hooks/useOrgData.js';
+import { useConfirm } from './hooks/useConfirm.jsx';
 import {
   buildOfflineSnapshotHtml, downloadSnapshotHtml,
   buildOrgBackup, downloadBackupJson,
@@ -195,6 +196,9 @@ const App = () => {
     setNotifications(p => [...p, { id, msg }]);
     setTimeout(() => setNotifications(p => p.filter(n => n.id !== id)), 4000);
   };
+
+  // Reusable destructive-action confirmation (modal with optional typed phrase)
+  const { ask: askConfirm, modal: confirmModal } = useConfirm();
 
   // ─── OFFLINE SNAPSHOT (Sotara super admin only) ──────────────────────────
   // Generates a self-contained HTML report of the active org so it can be
@@ -532,39 +536,46 @@ const App = () => {
     }
   };
 
-  const deleteRequest = async (id) => {
-    if (confirm("Delete this request?")) {
-      try {
-        const req = requests.find(r => r.id === id);
-        await supabaseApi.requestsApi.deleteRequest(id, effectiveOrgId);
-        addNotification("Deleted");
-        if (req) {
-          const empStaff = staffList.find(s => s.email?.toLowerCase() === req.employeeEmail?.toLowerCase());
-          const assignedApprover = empStaff?.approverEmail && !isEmailArchived(empStaff.approverEmail) ? empStaff.approverEmail : null;
-          const baseRecipients = getNotificationRecipients(req.department);
-          const approvalRecipients = assignedApprover ? [assignedApprover] : baseRecipients;
-          const allRecipients = [...new Set([req.employeeEmail, user.email, ...approvalRecipients])];
-          const activeRecipients = allRecipients.filter(email => !isEmailArchived(email));
-          await sendEmail(graphToken, activeRecipients,
-            `Leave Record Deleted: ${req.employeeName}`,
-            '🗑️ Leave Record Deleted',
-            '#6b7280',
-            [
-              { label: 'Employee', value: req.employeeName },
-              { label: 'Leave Type', value: req.type },
-              { label: 'Start Date', value: formatDateUK(req.startDate) },
-              { label: 'End Date', value: formatDateUK(req.endDate) },
-              { label: 'Days', value: `${req.daysCount} day(s)` },
-              { label: 'Deleted By', value: user.displayName }
-            ],
-            'This leave record has been removed from LeaveHub.'
-          );
+  const deleteRequest = (id) => {
+    const req = requests.find(r => r.id === id);
+    askConfirm({
+      title: 'Delete leave request',
+      message: req
+        ? `Delete the ${req.type} request for ${req.employeeName} (${formatDateUK(req.startDate)})?`
+        : 'Delete this leave request?',
+      warningPoints: [
+        'This will remove the record permanently.',
+        'Notification emails will be sent to the employee, the original approver, and you.',
+      ],
+      confirmLabel: 'Delete request',
+      onConfirm: async () => {
+        try {
+          await supabaseApi.requestsApi.deleteRequest(id, effectiveOrgId);
+          addNotification("Deleted");
+          if (req) {
+            const { recipients: approvalRecipients } = resolveRecipients(staffList, staffList.find(s => s.email?.toLowerCase() === req.employeeEmail?.toLowerCase()), req.department, user.email);
+            const allRecipients = [...new Set([req.employeeEmail, user.email, ...approvalRecipients])];
+            await sendEmail(graphToken, allRecipients,
+              `Leave Record Deleted: ${req.employeeName}`,
+              '🗑️ Leave Record Deleted',
+              '#6b7280',
+              [
+                { label: 'Employee', value: req.employeeName },
+                { label: 'Leave Type', value: req.type },
+                { label: 'Start Date', value: formatDateUK(req.startDate) },
+                { label: 'End Date', value: formatDateUK(req.endDate) },
+                { label: 'Days', value: `${req.daysCount} day(s)` },
+                { label: 'Deleted By', value: user.displayName }
+              ],
+              'This leave record has been removed from LeaveHub.'
+            );
+          }
+        } catch (error) {
+          console.error('Error deleting request:', error);
+          addNotification("Error deleting request");
         }
-      } catch (error) {
-        console.error('Error deleting request:', error);
-        addNotification("Error deleting request");
-      }
-    }
+      },
+    });
   };
 
   const saveStaff = async (e) => {
@@ -652,18 +663,32 @@ const App = () => {
     }
   };
 
-  // Confirmation is handled by the modal in AdminView (typed-phrase guard).
-  // This function simply executes the deletion when called.
-  const handleDeleteSilentImports = async () => {
-    try {
-      const silentRecords = requests.filter(r => r.importedSilently === true);
-      if (!silentRecords.length) return;
-      await supabaseApi.requestsApi.deleteSilentImports(effectiveOrgId);
-      addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
-    } catch (error) {
-      console.error('Error deleting silent imports:', error);
-      addNotification("Error deleting silent imports");
+  const handleDeleteSilentImports = () => {
+    const silentRecords = requests.filter(r => r.importedSilently === true);
+    if (!silentRecords.length) {
+      addNotification('No silently-imported records to delete');
+      return;
     }
+    askConfirm({
+      title: 'Rollback silent imports',
+      message: `You are about to permanently delete ${silentRecords.length} silently-imported record${silentRecords.length !== 1 ? 's' : ''}.`,
+      warningPoints: [
+        'This action <strong>cannot be undone</strong>.',
+        'It only removes records flagged <em>importedSilently</em> — manual entries and live submissions are unaffected.',
+        'Deleted records will not appear in any reports or balances.',
+      ],
+      confirmLabel: `Delete ${silentRecords.length} record${silentRecords.length !== 1 ? 's' : ''}`,
+      requirePhrase: `DELETE ${silentRecords.length}`,
+      onConfirm: async () => {
+        try {
+          await supabaseApi.requestsApi.deleteSilentImports(effectiveOrgId);
+          addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
+        } catch (error) {
+          console.error('Error deleting silent imports:', error);
+          addNotification("Error deleting silent imports");
+        }
+      },
+    });
   };
 
   const handleBulkImport = async (records) => {
@@ -770,27 +795,46 @@ const App = () => {
     setSearchResults([]);
   };
 
-  const toggleArchiveStaff = async (id, currentStatus) => {
-    if (confirm(currentStatus ? "Restore this user?" : "Archive this user?")) {
-      try {
-        await supabaseApi.staffApi.toggleArchiveStaff(id, !currentStatus, effectiveOrgId);
-        addNotification(currentStatus ? "User Restored" : "User Archived");
-      } catch (error) {
-        console.error('Error toggling archive status:', error);
-        addNotification("Error updating user");
-      }
-    }
+  const toggleArchiveStaff = (id, currentStatus) => {
+    askConfirm({
+      title: currentStatus ? 'Restore staff member' : 'Archive staff member',
+      message: currentStatus
+        ? 'They will appear in the active staff list and can submit requests again.'
+        : 'They will be hidden from the active list. Their leave history is kept and they can be restored later.',
+      confirmLabel: currentStatus ? 'Restore' : 'Archive',
+      onConfirm: async () => {
+        try {
+          await supabaseApi.staffApi.toggleArchiveStaff(id, !currentStatus, effectiveOrgId);
+          addNotification(currentStatus ? "User Restored" : "User Archived");
+        } catch (error) {
+          console.error('Error toggling archive status:', error);
+          addNotification("Error updating user");
+        }
+      },
+    });
   };
 
-  const permanentlyDeleteStaff = async (id, name) => {
-    if (!confirm(`⚠️ PERMANENTLY DELETE ${name}?\n\nThis will remove them from the system completely. This cannot be undone.\n\nAre you absolutely sure?`)) return;
-    try {
-      await supabaseApi.staffApi.deleteStaff(id, effectiveOrgId);
-      addNotification(`${name} permanently deleted`);
-    } catch (error) {
-      console.error('Error deleting staff:', error);
-      addNotification("Error deleting user");
-    }
+  const permanentlyDeleteStaff = (id, name) => {
+    askConfirm({
+      title: 'Permanently delete staff member',
+      message: `You are about to remove ${name} from the system completely.`,
+      warningPoints: [
+        'This action <strong>cannot be undone</strong>.',
+        'Their leave records will be orphaned (they will still appear in reports as historical data).',
+        'Consider <strong>archiving</strong> instead — it hides the user but keeps everything reversible.',
+      ],
+      confirmLabel: 'Permanently delete',
+      requirePhrase: `DELETE ${name}`,
+      onConfirm: async () => {
+        try {
+          await supabaseApi.staffApi.deleteStaff(id, effectiveOrgId);
+          addNotification(`${name} permanently deleted`);
+        } catch (error) {
+          console.error('Error deleting staff:', error);
+          addNotification("Error deleting user");
+        }
+      },
+    });
   };
 
   const prepareEdit = (staff) => {
@@ -816,17 +860,26 @@ const App = () => {
     }
   };
 
-  const deleteDepartment = async (deptId, name) => {
+  const deleteDepartment = (deptId, name) => {
     if (CONFIG.defaultDepartments.includes(name)) return alert("Cannot delete default.");
-    if (confirm(`Delete ${name}?`)) {
-      try {
-        await supabaseApi.departmentsApi.deleteDepartment(deptId, effectiveOrgId);
-        addNotification("Department Deleted");
-      } catch (error) {
-        console.error('Error deleting department:', error);
-        addNotification("Error deleting department");
-      }
-    }
+    const inUse = staffList.filter(s => !s.isArchived && s.department === name).length;
+    askConfirm({
+      title: 'Delete department',
+      message: `Remove "${name}" from the department list?`,
+      warningPoints: inUse > 0
+        ? [`<strong>${inUse} active staff</strong> are currently assigned to this department. Their assignment will remain but the department won't appear in dropdowns until re-added.`]
+        : ['No active staff are assigned to this department.'],
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await supabaseApi.departmentsApi.deleteDepartment(deptId, effectiveOrgId);
+          addNotification("Department Deleted");
+        } catch (error) {
+          console.error('Error deleting department:', error);
+          addNotification("Error deleting department");
+        }
+      },
+    });
   };
 
   const addTermDate = async () => {
@@ -842,20 +895,24 @@ const App = () => {
     }
   };
 
-  const deleteTermDate = async (id) => {
-    if (confirm("Delete date?")) {
-      try {
-        // Get holiday details for sync
-        const holiday = termDates.find(t => t.id === id);
-
-        await supabaseApi.termDatesApi.deleteTermDate(id, effectiveOrgId);
-        addNotification("Deleted");
-
-      } catch (error) {
-        console.error('Error deleting term date:', error);
-        addNotification("Error deleting date");
-      }
-    }
+  const deleteTermDate = (id) => {
+    const holiday = termDates.find(t => t.id === id);
+    askConfirm({
+      title: 'Delete term date',
+      message: holiday
+        ? `Remove "${holiday.description}" (${formatDateUK(holiday.date)}) from the calendar?`
+        : 'Remove this entry from the calendar?',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await supabaseApi.termDatesApi.deleteTermDate(id, effectiveOrgId);
+          addNotification("Deleted");
+        } catch (error) {
+          console.error('Error deleting term date:', error);
+          addNotification("Error deleting date");
+        }
+      },
+    });
   };
 
   const addSchoolTerm = async () => {
@@ -872,16 +929,29 @@ const App = () => {
     }
   };
 
-  const deleteSchoolTerm = async (id) => {
-    if (confirm("Delete this school year's term dates?")) {
-      try {
-        await supabaseApi.schoolTermsApi.deleteSchoolTerm(id, effectiveOrgId);
-        addNotification("School term deleted");
-      } catch (error) {
-        console.error('Error deleting school term:', error);
-        addNotification("Error deleting school term");
-      }
-    }
+  const deleteSchoolTerm = (id) => {
+    const term = schoolTerms.find(t => t.id === id);
+    askConfirm({
+      title: 'Delete school year',
+      message: term
+        ? `Delete the entire ${term.academicYear} school year setup (autumn, spring, summer terms + half-term breaks)?`
+        : "Delete this school year's term dates?",
+      warningPoints: [
+        'Term-time leave calculations for affected staff may change.',
+        'Existing leave requests will not be deleted.',
+      ],
+      confirmLabel: 'Delete year',
+      requirePhrase: term?.academicYear ? `DELETE ${term.academicYear}` : null,
+      onConfirm: async () => {
+        try {
+          await supabaseApi.schoolTermsApi.deleteSchoolTerm(id, effectiveOrgId);
+          addNotification("School term deleted");
+        } catch (error) {
+          console.error('Error deleting school term:', error);
+          addNotification("Error deleting school term");
+        }
+      },
+    });
   };
 
   const importBankHolidays = async () => {
@@ -913,15 +983,22 @@ const App = () => {
     }
   };
 
-  const deleteAnnouncement = async (id) => {
-    if (confirm("Delete?")) {
-      try {
-        await supabaseApi.announcementsApi.deleteAnnouncement(id, effectiveOrgId);
-      } catch (error) {
-        console.error('Error deleting announcement:', error);
-        addNotification("Error deleting announcement");
-      }
-    }
+  const deleteAnnouncement = (id) => {
+    const ann = announcements.find(a => a.id === id);
+    askConfirm({
+      title: 'Delete announcement',
+      message: ann?.message ? `Remove this announcement: "${ann.message.substring(0, 80)}${ann.message.length > 80 ? '…' : ''}"?` : 'Remove this announcement?',
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await supabaseApi.announcementsApi.deleteAnnouncement(id, effectiveOrgId);
+          addNotification("Announcement deleted");
+        } catch (error) {
+          console.error('Error deleting announcement:', error);
+          addNotification("Error deleting announcement");
+        }
+      },
+    });
   };
 
   const exportCSV = (filename, headers, rows) => {
@@ -1303,6 +1380,9 @@ const App = () => {
           </>
         )}
       </div>
+      {/* Reusable destructive-action confirmation modal — rendered last so it
+          overlays everything else. Triggered via askConfirm({...}). */}
+      {confirmModal}
       </OrganizationProvider>
     </ErrorBoundary>
   );
