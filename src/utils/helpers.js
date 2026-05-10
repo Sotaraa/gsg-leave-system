@@ -232,9 +232,9 @@ const buildEmailHTML = (title, color, rows, footerNote) => `<!DOCTYPE html PUBLI
 </html>`;
  
 export const sendEmail = async (graphToken, toEmails, subject, title, color, rows, footerNote) => {
-  if (!graphToken || !toEmails || toEmails.length === 0) return;
+  if (!graphToken || !toEmails || toEmails.length === 0) return false;
   const uniqueEmails = [...new Set(toEmails.filter(Boolean))];
-  if (uniqueEmails.length === 0) return;
+  if (uniqueEmails.length === 0) return false;
   try {
     const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
       method: 'POST',
@@ -255,18 +255,23 @@ export const sendEmail = async (graphToken, toEmails, subject, title, color, row
         }
       })
     });
- 
+
     if (response.status === 401) {
       alert("⚠️ Your email session has expired.\n\nThe action was saved, but the email notification failed to send. Please refresh the page and log in again so future emails will send.");
       console.error("Graph API Token Expired (401)");
-      return;
+      return false;
     }
- 
+
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try { errorData = await response.json(); } catch { errorData = { status: response.status }; }
       console.error("Error sending email via Graph API:", errorData);
+      return false;
     }
+
+    return true;
   } catch (err) {
     console.error('Email send failed:', err);
+    return false;
   }
 };

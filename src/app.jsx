@@ -304,20 +304,27 @@ const App = () => {
       .filter(s => s.role === 'Dept Head' && s.department === dept && !s.isArchived)
       .map(s => s.email);
 
-  const getAdminEmailsForDept = (dept) => {
-    const adminInDept = staffList
+  // All non-archived admins / super-admins in the org (regardless of department)
+  const getAllAdminEmails = () =>
+    staffList
+      .filter(s => !s.isArchived && (
+        CONFIG.superAdmins.some(a => a.toLowerCase() === s.email?.toLowerCase()) ||
+        s.role === 'Admin'
+      ))
+      .map(s => s.email);
+
+  const getNotificationRecipients = (dept) => {
+    const deptHeads = getDeptHeadEmails(dept);
+    // Primary: dept heads + admins in same department
+    const adminsInDept = staffList
       .filter(s => !s.isArchived && (
         CONFIG.superAdmins.some(a => a.toLowerCase() === s.email?.toLowerCase()) ||
         s.role === 'Admin'
       ) && s.department === dept)
       .map(s => s.email);
-    return adminInDept;
-  };
-
-  const getNotificationRecipients = (dept) => {
-    const deptHeads = getDeptHeadEmails(dept);
-    const adminsInDept = getAdminEmailsForDept(dept);
-    return [...new Set([...deptHeads, ...adminsInDept])];
+    const primary = [...new Set([...deptHeads, ...adminsInDept])];
+    // Fallback: if no dept-specific recipients found, notify ALL admins in the org
+    return primary.length > 0 ? primary : getAllAdminEmails();
   };
 
   const isEmailArchived = (email) => {
@@ -533,8 +540,10 @@ const App = () => {
 
     const assignedApprover = myProfile?.approverEmail && !isEmailArchived(myProfile.approverEmail) ? myProfile.approverEmail : null;
     const baseRecipients = getNotificationRecipients(myDept);
-    // If an approver is assigned, send ONLY to them. Otherwise, send to default department heads.
-    const recipients = assignedApprover ? [assignedApprover] : baseRecipients;
+    // If an approver is assigned, send ONLY to them. Otherwise, send to default department heads / all admins.
+    // Exclude the submitter themselves to avoid self-notification.
+    const rawRecipients = assignedApprover ? [assignedApprover] : baseRecipients;
+    const recipients = rawRecipients.filter(e => e?.toLowerCase() !== user.email?.toLowerCase());
 
     let balanceSummaryRows = [];
     if (!amITermTime && formData.type === 'Annual Leave') {
@@ -567,23 +576,37 @@ const App = () => {
       ...(isInSchoolHoliday ? [{ label: 'School Holiday',  value: 'This request overlaps a recorded school holiday period.', highlight: 'amber' }] : []),
     ];
 
-    await sendEmail(graphToken, recipients,
-      `New Leave Request: ${user.displayName}`,
-      '🗓️ New Leave Request',
-      '#064e3b',
-      [
-        { label: 'Employee', value: user.displayName },
-        { label: 'Department', value: myDept },
-        { label: 'Leave Type', value: formData.type },
-        { label: 'Start Date', value: formatDateUK(formData.startDate) },
-        { label: 'End Date', value: formData.isHalfDay ? 'Half Day' : formatDateUK(formData.endDate) },
-        { label: 'Days', value: `${days} day(s)` },
-        { label: 'Status', value: 'Pending Approval' },
-        ...termFlagRows,
-        ...balanceSummaryRows
-      ],
-      'Please review this request.'
-    );
+    if (!graphToken) {
+      console.warn('⚠️ No graph token — email notification skipped');
+      addNotification("Request submitted (email notification unavailable — please notify your manager)");
+    } else if (recipients.length === 0) {
+      console.warn('⚠️ No recipients found for dept:', myDept, '— email notification skipped');
+      addNotification("Request submitted (no approver found — please contact your manager)");
+    } else {
+      console.log(`📧 Sending leave notification to: ${recipients.join(', ')}`);
+      const emailSent = await sendEmail(graphToken, recipients,
+        `New Leave Request: ${user.displayName}`,
+        '🗓️ New Leave Request',
+        '#064e3b',
+        [
+          { label: 'Employee', value: user.displayName },
+          { label: 'Department', value: myDept },
+          { label: 'Leave Type', value: formData.type },
+          { label: 'Start Date', value: formatDateUK(formData.startDate) },
+          { label: 'End Date', value: formData.isHalfDay ? 'Half Day' : formatDateUK(formData.endDate) },
+          { label: 'Days', value: `${days} day(s)` },
+          { label: 'Status', value: 'Pending Approval' },
+          ...termFlagRows,
+          ...balanceSummaryRows
+        ],
+        'Please review this request.'
+      );
+      if (emailSent) {
+        addNotification(`Notification sent to ${recipients.length} approver${recipients.length > 1 ? 's' : ''}`);
+      } else {
+        addNotification("Request submitted (email notification failed — please notify your manager)");
+      }
+    }
   };
 
   const handleApproval = async (id, status, approvalSubType = null, rejectionReason = null) => {
