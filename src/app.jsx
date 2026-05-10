@@ -652,11 +652,12 @@ const App = () => {
     }
   };
 
+  // Confirmation is handled by the modal in AdminView (typed-phrase guard).
+  // This function simply executes the deletion when called.
   const handleDeleteSilentImports = async () => {
     try {
       const silentRecords = requests.filter(r => r.importedSilently === true);
-      if (!silentRecords.length) return alert('No silently imported records found to delete.');
-      if (!confirm(`This will permanently delete all ${silentRecords.length} silently imported record${silentRecords.length !== 1 ? 's' : ''}. This cannot be undone — continue?`)) return;
+      if (!silentRecords.length) return;
       await supabaseApi.requestsApi.deleteSilentImports(effectiveOrgId);
       addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
     } catch (error) {

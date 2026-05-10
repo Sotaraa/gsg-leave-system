@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2, Archive, RotateCcw, Download, Upload, AlertCircle, CheckCircle2,
-         Users, ClipboardList, Settings as SettingsIcon, Database, Mail } from 'lucide-react';
+         Users, ClipboardList, Settings as SettingsIcon, Database, Mail, ShieldAlert, X } from 'lucide-react';
 import CONFIG from '../../config.js';
 import { formatDateUK, getTermForDate } from '../../utils/helpers.js';
 import { TypeNote } from './EmployeeView.jsx';
@@ -32,6 +32,29 @@ const AdminView = ({
   const [importPreview, setImportPreview] = useState([]);
   const [importResults, setImportResults] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
+
+  // ── Rollback confirmation modal ──────────────────────────────────────
+  const [showRollbackModal, setShowRollbackModal] = useState(false);
+  const [rollbackConfirmText, setRollbackConfirmText] = useState('');
+  const [rollbackInProgress, setRollbackInProgress] = useState(false);
+  const rollbackPhrase = `DELETE ${silentImportCount}`;
+  const rollbackArmed = rollbackConfirmText.trim() === rollbackPhrase;
+  const closeRollbackModal = () => {
+    if (rollbackInProgress) return;
+    setShowRollbackModal(false);
+    setRollbackConfirmText('');
+  };
+  const confirmRollback = async () => {
+    if (!rollbackArmed) return;
+    setRollbackInProgress(true);
+    try {
+      await handleDeleteSilentImports();
+    } finally {
+      setRollbackInProgress(false);
+      setShowRollbackModal(false);
+      setRollbackConfirmText('');
+    }
+  };
 
   const handleCsvFileUpload = (e) => {
     const file = e.target.files[0];
@@ -940,9 +963,102 @@ firstname.lastname@gardenerschools.com,Annual Leave,2025-11-05,2025-11-06,2`}
                 <p className="text-xs font-semibold text-gray-600">{silentImportCount} silently imported record{silentImportCount !== 1 ? 's' : ''} in the system</p>
                 <p className="text-xs text-gray-400">Delete all records that were added via silent import</p>
               </div>
-              <button onClick={handleDeleteSilentImports} className="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 text-xs flex items-center gap-1.5">
-                <Trash2 size={13}/> Rollback All Silent Imports
+              <button
+                onClick={() => setShowRollbackModal(true)}
+                className="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 text-xs flex items-center gap-1.5"
+                title="Permanently delete all silently-imported leave records"
+              >
+                <ShieldAlert size={13}/> Rollback Silent Imports…
               </button>
+            </div>
+          )}
+
+          {/* ── Destructive-action confirmation modal ─────────────────── */}
+          {showRollbackModal && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: 'rgba(15, 23, 42, 0.55)' }}
+              onClick={closeRollbackModal}
+            >
+              <div
+                className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="bg-red-600 text-white px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert size={18} />
+                    <h3 className="font-bold text-sm">Confirm destructive action</h3>
+                  </div>
+                  <button
+                    onClick={closeRollbackModal}
+                    disabled={rollbackInProgress}
+                    className="text-white/80 hover:text-white disabled:opacity-50"
+                    aria-label="Close"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-5 space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-800 font-semibold mb-2">
+                      You are about to permanently delete <span className="text-red-600">{silentImportCount}</span> silently-imported record{silentImportCount !== 1 ? 's' : ''}.
+                    </p>
+                    <ul className="text-xs text-gray-600 list-disc pl-5 space-y-1">
+                      <li>This action <strong>cannot be undone</strong>.</li>
+                      <li>It only removes records flagged <em>importedSilently</em> — manual entries and live submissions are unaffected.</li>
+                      <li>Deleted records will not appear in any reports or balances.</li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs text-amber-800 mb-2">
+                      To confirm, type the following phrase exactly:
+                    </p>
+                    <code className="block bg-white border border-amber-300 rounded px-3 py-2 text-sm font-mono text-amber-900 mb-2 select-all">
+                      {rollbackPhrase}
+                    </code>
+                    <input
+                      type="text"
+                      value={rollbackConfirmText}
+                      onChange={e => setRollbackConfirmText(e.target.value)}
+                      placeholder="Type the phrase here"
+                      autoFocus
+                      disabled={rollbackInProgress}
+                      className={`w-full px-3 py-2 text-sm border rounded font-mono focus:outline-none focus:ring-2 ${
+                        rollbackArmed
+                          ? 'border-red-400 focus:ring-red-300 bg-red-50'
+                          : 'border-gray-300 focus:ring-amber-300'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="bg-gray-50 px-5 py-3 flex items-center justify-end gap-2 border-t border-gray-200">
+                  <button
+                    onClick={closeRollbackModal}
+                    disabled={rollbackInProgress}
+                    className="btn btn-secondary text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmRollback}
+                    disabled={!rollbackArmed || rollbackInProgress}
+                    className={`btn text-xs flex items-center gap-1.5 ${
+                      rollbackArmed && !rollbackInProgress
+                        ? 'bg-red-600 text-white hover:bg-red-700 border-red-600'
+                        : 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed'
+                    }`}
+                  >
+                    <Trash2 size={13}/>
+                    {rollbackInProgress ? 'Deleting…' : `Delete ${silentImportCount} record${silentImportCount !== 1 ? 's' : ''}`}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
