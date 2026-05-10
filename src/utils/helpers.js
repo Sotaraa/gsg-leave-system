@@ -1,7 +1,11 @@
 import CONFIG from '../config.js';
  
-// The live URL for your GSG HR Portal
-const PORTAL_URL = "https://gsg-leave-system.vercel.app";
+// The live URL for the LeaveHub portal (used in email notification buttons).
+// Falls back to window.location.origin in the browser so dev / preview builds
+// link back to themselves rather than production.
+const PORTAL_URL = (typeof window !== 'undefined' && window.location && window.location.origin)
+  ? window.location.origin
+  : "https://leavehub.sotara.co.uk";
  
 export const generateUKBankHolidays = (year) => {
   const hols = [
@@ -132,11 +136,11 @@ const buildEmailHTML = (title, color, rows, footerNote) => `<!DOCTYPE html PUBLI
               <table border="0" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
                   <td>
-                    <p style="margin:0 0 6px 0;color:rgba(255,255,255,0.85);font-size:11px;text-transform:uppercase;letter-spacing:2px;">Gardener Schools Group</p>
+                    <p style="margin:0 0 6px 0;color:rgba(255,255,255,0.85);font-size:11px;text-transform:uppercase;letter-spacing:2px;">LeaveHub Notification</p>
                     <p style="margin:0;color:#ffffff;font-size:22px;font-weight:bold;">${title}</p>
                   </td>
                   <td align="right" valign="middle" width="60">
-                    <p style="margin:0;font-size:28px;line-height:1;">🎓</p>
+                    <p style="margin:0;font-size:28px;line-height:1;">📅</p>
                   </td>
                 </tr>
               </table>
@@ -190,14 +194,14 @@ const buildEmailHTML = (title, color, rows, footerNote) => `<!DOCTYPE html PUBLI
                       stroke="f"
                       fillcolor="${color}">
                       <w:anchorlock/>
-                      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;">Open GSG HR Portal</center>
+                      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;">Open LeaveHub</center>
                     </v:roundrect>
                     <![endif]-->
                     <!--[if !mso]><!-->
                     <a href="${PORTAL_URL}"
                        target="_blank"
                        style="background-color:${color};border:2px solid ${color};border-radius:6px;color:#ffffff;display:inline-block;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:1;padding:13px 28px;text-decoration:none;text-align:center;">
-                      &#128279; Open GSG HR Portal
+                      &#128279; Open LeaveHub
                     </a>
                     <!--<![endif]-->
                   </td>
@@ -213,7 +217,7 @@ const buildEmailHTML = (title, color, rows, footerNote) => `<!DOCTYPE html PUBLI
           <!-- Footer bar -->
           <tr>
             <td style="background-color:#f9fafb;padding:14px 32px;border-top:1px solid #e5e7eb;">
-              <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;">GSG HR Portal &bull; Automated Notification &bull; Do not reply to this email</p>
+              <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;">Sotara LeaveHub &bull; Automated Notification &bull; Do not reply to this email</p>
             </td>
           </tr>
  

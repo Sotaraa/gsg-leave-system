@@ -694,7 +694,7 @@ const App = () => {
               { label: 'Days', value: `${req.daysCount} day(s)` },
               { label: 'Deleted By', value: user.displayName }
             ],
-            'This leave record has been removed from the GSG HR Portal.'
+            'This leave record has been removed from LeaveHub.'
           );
         }
       } catch (error) {
@@ -779,7 +779,7 @@ const App = () => {
             { label: 'Days', value: useHoursMode ? `${days} day(s) (${hoursEntered}h @ ${hpd}h/day)` : `${days} day(s)` },
             { label: 'Recorded By', value: user.displayName }
           ],
-          'This absence has been manually recorded in the GSG HR Portal by an administrator.'
+          'This absence has been manually recorded in LeaveHub by an administrator.'
         );
       }
       setManualLeave(p => ({ ...p, silentEmail: false, hoursWorked: '', sickReason: '' }));
