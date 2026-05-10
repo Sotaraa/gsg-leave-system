@@ -273,3 +273,134 @@ export const sendSubmissionNotification = async (
     azureToken
   );
 };
+
+/**
+ * Send a welcome / onboarding email to a newly-created organisation admin.
+ *
+ * The email is sent from the currently-authenticated Sotara super admin's
+ * mailbox (whoever just created the org), using their Graph API token.
+ *
+ * Note: this does NOT call sendNotificationEmail because the new org's
+ * notificationemail isn't reachable yet — we use the current user's
+ * mailbox directly via /me/sendMail.
+ *
+ * @param {string} adminEmail        – New admin's email (recipient)
+ * @param {string} adminFirstName    – Optional first name for greeting
+ * @param {string} organizationName  – Display name of the new org
+ * @param {string} azureToken        – Sotara admin's Graph API token
+ * @param {string} [portalUrl]       – Login URL (defaults to leavehub.sotara.co.uk)
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const sendOrgWelcomeEmail = async (
+  adminEmail,
+  adminFirstName,
+  organizationName,
+  azureToken,
+  portalUrl = 'https://leavehub.sotara.co.uk'
+) => {
+  if (!adminEmail || !azureToken) {
+    return { success: false, error: 'Missing adminEmail or azureToken' };
+  }
+
+  const greeting = adminFirstName ? `Hi ${adminFirstName},` : 'Hi,';
+  const subject = `Welcome to Sotara LeaveHub — ${organizationName} is ready`;
+
+  const htmlBody = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+
+        <tr><td style="background:#064e3b;padding:28px 32px;">
+          <p style="margin:0 0 6px 0;color:rgba(255,255,255,0.85);font-size:11px;text-transform:uppercase;letter-spacing:2px;">LeaveHub</p>
+          <p style="margin:0;color:#fff;font-size:22px;font-weight:bold;">Welcome to Sotara LeaveHub</p>
+        </td></tr>
+
+        <tr><td style="padding:28px 32px 12px 32px;color:#111827;font-size:14px;line-height:1.55;">
+          <p style="margin:0 0 14px 0;">${greeting}</p>
+          <p style="margin:0 0 14px 0;">
+            Your organisation <strong>${organizationName}</strong> is now set up on Sotara LeaveHub
+            and you have been added as the administrator.
+          </p>
+          <p style="margin:0 0 14px 0;">
+            You can sign in at any time using your Microsoft 365 account — no password needed.
+            On first sign-in, Microsoft will ask you to consent to the app's permissions
+            (read profile, send notification emails, access the Global Address List). If you
+            are an Azure AD administrator at ${organizationName}, tick the
+            <em>"Consent on behalf of your organisation"</em> box so other staff don't get
+            prompted individually.
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:8px 32px 20px 32px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;">
+            <tr><td style="padding:14px 16px;">
+              <p style="margin:0 0 8px 0;color:#065f46;font-weight:bold;font-size:13px;">Your getting-started checklist</p>
+              <ol style="margin:0;padding-left:20px;color:#065f46;font-size:13px;line-height:1.7;">
+                <li>Sign in at the link below with your M365 account</li>
+                <li>Open <strong>Admin → Manage Staff</strong> and add your team (or import them)</li>
+                <li>Set <strong>Default Settings</strong> (leave allowance, hours per day, holiday year)</li>
+                <li>Add <strong>Term Dates</strong> if you're a school</li>
+                <li>Optional: appoint <strong>Dept Heads</strong> to handle approvals</li>
+              </ol>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td align="center" style="padding:0 32px 28px 32px;">
+          <a href="${portalUrl}" target="_blank"
+             style="background:#064e3b;border-radius:6px;color:#fff;display:inline-block;font-size:14px;font-weight:bold;padding:13px 28px;text-decoration:none;">
+            Sign in to LeaveHub
+          </a>
+          <p style="margin:10px 0 0 0;font-size:11px;color:#9ca3af;">
+            Or copy this link: <a href="${portalUrl}" style="color:#6b7280;">${portalUrl}</a>
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:0 32px 24px 32px;color:#374151;font-size:13px;line-height:1.55;">
+          <p style="margin:0 0 8px 0;">
+            Need help? Reply to this email — it goes straight to the Sotara team.
+          </p>
+          <p style="margin:0;">Welcome aboard,<br/>The Sotara team</p>
+        </td></tr>
+
+        <tr><td style="background:#f9fafb;padding:14px 32px;border-top:1px solid #e5e7eb;">
+          <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;">Sotara LeaveHub &bull; Onboarding Notification</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  try {
+    const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${azureToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: htmlBody },
+          toRecipients: [{ emailAddress: { address: adminEmail } }],
+        },
+        saveToSentItems: true,
+      }),
+    });
+
+    if (!response.ok) {
+      let errorData;
+      try { errorData = await response.json(); } catch { errorData = { status: response.status }; }
+      const msg = errorData?.error?.message || `HTTP ${response.status}`;
+      console.error('Welcome email failed:', msg);
+      return { success: false, error: msg };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Welcome email exception:', err.message);
+    return { success: false, error: err.message };
+  }
+};

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Megaphone, Maximize2, Minimize2 } from 'lucide-react';
 import { logoutEntra } from './services/entraAuth';
 
@@ -14,6 +14,7 @@ import {
   sendSubmissionNotification
 } from './services/emailNotifications.js';
 import { logEmail } from './services/emailLog.js';
+import { resolveRecipients } from './services/notificationRecipients.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { OrganizationProvider } from './contexts/OrganizationContext.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
@@ -25,9 +26,16 @@ import AdminView from './components/views/AdminView.jsx';
 import CalendarView from './components/views/CalendarView.jsx';
 import AnalyticsView from './components/views/AnalyticsView.jsx';
 import OnboardingAdmin from './components/OnboardingAdmin.jsx';
-
-const INACTIVITY_LIMIT_MS = 10 * 60 * 1000;
-const WARNING_BEFORE_MS = 60 * 1000;
+import { useInactivityTimer } from './hooks/useInactivityTimer.js';
+import { useOrgData } from './hooks/useOrgData.js';
+import {
+  computeHolidayYear,
+  getLeaveTaken as calcLeaveTaken,
+  getTOILBalance as calcTOILBalance,
+  getAllowanceStats as calcAllowanceStats,
+  getYearStartForClosingDate as calcYearStartForClosingDate,
+  checkForOverlap as calcOverlap,
+} from './utils/leaveCalculations.js';
 
 const App = () => {
   const { user: authUser, loading: authLoading, supabaseSession } = useAuth();
@@ -48,15 +56,21 @@ const App = () => {
   const isSuperAdmin = user?.email?.toLowerCase() === 'info@sotara.co.uk';
   const effectiveOrgId = (isSuperAdmin && activeOrgId) ? activeOrgId : (user?.organization || activeOrgId);
 
-  const [staffList, setStaffList] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [departments, setDepartments] = useState(CONFIG.defaultDepartments);
-  const [termDates, setTermDates] = useState([]);
-  const [announcements, setAnnouncements] = useState([]);
+  // Org-scoped data (staff, requests, depts, term dates, school terms,
+  // announcements, settings) is loaded + kept fresh by useOrgData.
+  const {
+    staffList,      setStaffList,
+    requests,       setRequests,
+    departments,    setDepartments,
+    termDates,      setTermDates,
+    schoolTerms,    setSchoolTerms,
+    announcements,  setAnnouncements,
+    systemSettings, setSystemSettings,
+    isLoading: orgDataLoading,
+  } = useOrgData(user, (isSuperAdmin && activeOrgId) ? activeOrgId : (user?.organization || activeOrgId));
+
   const [notifications, setNotifications] = useState([]);
   const [bankHolidays, setBankHolidays] = useState([]);
-
-  const [systemSettings, setSystemSettings] = useState({ defaultAllowance: CONFIG.defaultAllowance });
   const [pendingApprovalId, setPendingApprovalId] = useState(null);
 
   const [loginError, setLoginError] = useState('');
@@ -79,68 +93,36 @@ const App = () => {
   const [manualLeave, setManualLeave] = useState({ employeeId: '', type: CONFIG.leaveTypes[0], startDate: '', endDate: '', isHalfDay: false, approvalSubType: '', silentEmail: false, hoursWorked: '', sickReason: '' });
   const [newDeptName, setNewDeptName] = useState('');
   const [newTermDate, setNewTermDate] = useState({ description: '', date: '', type: 'INSET Day' });
-  const [schoolTerms, setSchoolTerms] = useState([]);
   const [newSchoolTerm, setNewSchoolTerm] = useState({ academicYear: '', autumnStart: '', autumnEnd: '', autumnHalfTermStart: '', autumnHalfTermEnd: '', springStart: '', springEnd: '', springHalfTermStart: '', springHalfTermEnd: '', summerStart: '', summerEnd: '', summerHalfTermStart: '', summerHalfTermEnd: '' });
   const [newAnnouncement, setNewAnnouncement] = useState({ message: '', expiry: '' });
 
-  // ─── INACTIVITY LOGOUT ────────────────────────────────────────────────────
-  const inactivityTimer = useRef(null);
-  const warningTimer = useRef(null);
-
+  // ─── LOGOUT ──────────────────────────────────────────────────────────────
   const handleLogout = useCallback(async () => {
     setShowInactivityWarning(false);
     const authMethod = localStorage.getItem('GSG_AUTH_METHOD');
-
-    // Clear Supabase session
     localStorage.removeItem('SUPABASE_SESSION');
-
-    // Clear auth localStorage
     localStorage.removeItem('GSG_USER_EMAIL');
     localStorage.removeItem('GSG_USER_NAME');
     localStorage.removeItem('GSG_AUTH_METHOD');
 
-    // Logout from Entra if logged in via Entra
     if (authMethod === 'entra') {
-      try {
-        await logoutEntra();
-      } catch (err) {
-        console.error('Entra logout error:', err);
-      }
+      try { await logoutEntra(); }
+      catch (err) { console.error('Entra logout error:', err); }
     }
-
-    // Sign out from Supabase Auth
-    try {
-      // This is safe even if user didn't complete Supabase auth
-      await import('./supabase.js').then(m => m.supabase.auth.signOut());
-    } catch (err) {
-      console.warn('Supabase signOut error (non-critical):', err);
-    }
+    try { await import('./supabase.js').then(m => m.supabase.auth.signOut()); }
+    catch (err) { console.warn('Supabase signOut error (non-critical):', err); }
 
     setGraphToken(null);
     setUser(null);
     window.location.reload();
   }, []);
 
-  const resetInactivityTimer = useCallback(() => {
-    if (!user) return;
-    setShowInactivityWarning(false);
-    clearTimeout(inactivityTimer.current);
-    clearTimeout(warningTimer.current);
-    warningTimer.current = setTimeout(() => setShowInactivityWarning(true), INACTIVITY_LIMIT_MS - WARNING_BEFORE_MS);
-    inactivityTimer.current = setTimeout(() => handleLogout(), INACTIVITY_LIMIT_MS);
-  }, [user, handleLogout]);
-
-  useEffect(() => {
-    if (!user) return;
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-    events.forEach(e => window.addEventListener(e, resetInactivityTimer));
-    resetInactivityTimer();
-    return () => {
-      events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
-      clearTimeout(inactivityTimer.current);
-      clearTimeout(warningTimer.current);
-    };
-  }, [user, resetInactivityTimer]);
+  // ─── INACTIVITY LOGOUT ───────────────────────────────────────────────────
+  useInactivityTimer({
+    enabled: !!user,
+    onLogout: handleLogout,
+    onWarning: () => setShowInactivityWarning(true),
+  });
 
   // ─── INIT ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -176,131 +158,33 @@ const App = () => {
     });
   }, [isSuperAdmin]);
 
+  // ─── PERSONAL PROFILE DERIVATION ─────────────────────────────────────────
+  // Derive role/dept/allowance/etc from the current user's row in staffList.
+  // Skipped in God Mode so super admin keeps their own profile.
   useEffect(() => {
     if (!user) return;
-    const orgId = effectiveOrgId || user.organization;
-    if (!orgId) return;
-
-    // In God Mode the super admin is browsing a client org — don't overwrite
-    // their own personal profile state (role, dept, allowance, working days).
     const godMode = isSuperAdmin && activeOrgId;
+    if (godMode) return;
 
-    const subscriptions = [];
-    let isUnmounting = false;
+    const profile = staffList.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
+    const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
+    if (isSuper) setMyRole('Admin');
+    else if (profile) setMyRole(profile.role);
+    else setMyRole('Staff');
 
-    (async () => {
-      try {
-        // Load initial data
-        logger.log(`Loading data for organization: ${orgId}${godMode ? ' (God Mode)' : ''}`);
+    if (profile) {
+      setMyDept(profile.department || '');
+      setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
+      setAmITermTime(profile.isTermTime || false);
+      setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
+      if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
+      else setFormData(p => ({ ...p, type: 'Annual Leave' }));
+    }
+  }, [staffList, user, isSuperAdmin, activeOrgId]);
 
-        // Load staff
-        const staffList = await supabaseApi.staffApi.getStaffList(orgId);
-        if (!isUnmounting) {
-          const sortedStaff = staffList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-          setStaffList(sortedStaff);
-
-          // Only update personal profile state when NOT in God Mode
-          if (!godMode) {
-            const profile = sortedStaff.find(s => s.email?.toLowerCase() === user.email?.toLowerCase());
-            const isSuper = CONFIG.superAdmins.some(a => a.toLowerCase() === user.email?.toLowerCase());
-            if (isSuper) setMyRole('Admin');
-            else if (profile) setMyRole(profile.role);
-            else setMyRole('Staff');
-
-            if (profile) {
-              setMyDept(profile.department || '');
-              setMyAllowance((Number(profile.allowance) || CONFIG.defaultAllowance) + (profile.carryForwardDays || 0));
-              setAmITermTime(profile.isTermTime || false);
-              setMyWorkingDays(profile.workingDays?.length ? profile.workingDays : [1, 2, 3, 4, 5]);
-              if (profile.isTermTime) setFormData(p => ({ ...p, type: CONFIG.termTimeWorkType }));
-              else setFormData(p => ({ ...p, type: 'Annual Leave' }));
-            }
-          }
-        }
-
-        // Load requests
-        const requestsList = await supabaseApi.requestsApi.getAllRequests(orgId);
-        if (!isUnmounting) {
-          setRequests(requestsList.sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')));
-        }
-
-        // Load departments
-        const deptsList = await supabaseApi.departmentsApi.getDepartments(orgId);
-        if (!isUnmounting) {
-          const custom = deptsList.map(d => d.name);
-          setDepartments([...new Set([...CONFIG.defaultDepartments, ...custom])].sort());
-        }
-
-        // Load term dates
-        const termDatesList = await supabaseApi.termDatesApi.getTermDates(orgId);
-        if (!isUnmounting) {
-          setTermDates(termDatesList);
-        }
-
-        // Load school terms
-        const schoolTermsList = await supabaseApi.schoolTermsApi.getSchoolTerms(orgId);
-        if (!isUnmounting) {
-          setSchoolTerms(schoolTermsList.sort((a, b) => (a.academicYear || '').localeCompare(b.academicYear || '')));
-        }
-
-        // Load announcements
-        const announcementsList = await supabaseApi.announcementsApi.getAnnouncements(orgId);
-        if (!isUnmounting) {
-          setAnnouncements(announcementsList);
-        }
-
-        // Load settings
-        const settings = await supabaseApi.settingsApi.getSettings(orgId);
-        if (!isUnmounting) {
-          setSystemSettings(prev => ({ ...prev, ...settings }));
-        }
-
-        setIsLoading(false);
-        logger.log(`Data loaded for ${orgId}`);
-
-        // Setup real-time listeners
-        if (!isUnmounting) {
-          const realtimeSubs = supabaseApi.setupRealtimeListeners(orgId, {
-            onStaffChange: async () => {
-              const updated = await supabaseApi.staffApi.getStaffList(orgId);
-              if (!isUnmounting) {
-                setStaffList(updated.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
-              }
-            },
-            onRequestsChange: async () => {
-              const updated = await supabaseApi.requestsApi.getAllRequests(orgId);
-              if (!isUnmounting) {
-                setRequests(updated.sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')));
-              }
-            },
-            onDepartmentsChange: async () => {
-              const updated = await supabaseApi.departmentsApi.getDepartments(orgId);
-              if (!isUnmounting) {
-                const custom = updated.map(d => d.name);
-                setDepartments([...new Set([...CONFIG.defaultDepartments, ...custom])].sort());
-              }
-            },
-            onTermDatesChange: async () => {
-              const updated = await supabaseApi.termDatesApi.getTermDates(orgId);
-              if (!isUnmounting) {
-                setTermDates(updated);
-              }
-            }
-          });
-          subscriptions.push(...realtimeSubs);
-        }
-      } catch (error) {
-        console.error('❌ Error loading organization data:', error);
-        setIsLoading(false);
-      }
-    })();
-
-    return () => {
-      isUnmounting = true;
-      supabaseApi.cleanupRealtimeListeners(subscriptions);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, effectiveOrgId]);
+  useEffect(() => {
+    setIsLoading(orgDataLoading);
+  }, [orgDataLoading]);
 
   const addNotification = (msg) => {
     const id = Date.now();
@@ -308,112 +192,23 @@ const App = () => {
     setTimeout(() => setNotifications(p => p.filter(n => n.id !== id)), 4000);
   };
 
-  // ─── EMAIL HELPERS ────────────────────────────────────────────────────────
-  const getDeptHeadEmails = (dept) =>
-    staffList
-      .filter(s => s.role === 'Dept Head' && s.department === dept && !s.isArchived)
-      .map(s => s.email);
+  // Email recipient helpers live in services/notificationRecipients.js
 
-  // All non-archived admins / super-admins in the org (regardless of department)
-  const getAllAdminEmails = () =>
-    staffList
-      .filter(s => !s.isArchived && (
-        CONFIG.superAdmins.some(a => a.toLowerCase() === s.email?.toLowerCase()) ||
-        s.role === 'Admin'
-      ))
-      .map(s => s.email);
+  const currentHolidayYear = useMemo(
+    () => computeHolidayYear(systemSettings),
+    [systemSettings.holidayYearStartMonth, systemSettings.holidayYearStartDay]
+  );
 
-  const getNotificationRecipients = (dept) => {
-    const deptHeads = getDeptHeadEmails(dept);
-    // Primary: dept heads + admins in same department
-    const adminsInDept = staffList
-      .filter(s => !s.isArchived && (
-        CONFIG.superAdmins.some(a => a.toLowerCase() === s.email?.toLowerCase()) ||
-        s.role === 'Admin'
-      ) && s.department === dept)
-      .map(s => s.email);
-    const primary = [...new Set([...deptHeads, ...adminsInDept])];
-    // Fallback: if no dept-specific recipients found, notify ALL admins in the org
-    return primary.length > 0 ? primary : getAllAdminEmails();
-  };
+  const getLeaveTaken = useCallback(
+    (email, isTT) => calcLeaveTaken(requests, email, isTT, currentHolidayYear),
+    [requests, currentHolidayYear]
+  );
 
-  const isEmailArchived = (email) => {
-    const staff = staffList.find(s => s.email?.toLowerCase() === email?.toLowerCase());
-    return staff ? staff.isArchived : false;
-  };
-
-  const currentHolidayYear = useMemo(() => {
-    const m = (systemSettings.holidayYearStartMonth || 9) - 1; 
-    const d = systemSettings.holidayYearStartDay || 1;
-    const now = new Date();
-    let startYear = now.getFullYear();
-    if (now < new Date(startYear, m, d)) startYear -= 1;
-    const s = new Date(startYear, m, d);
-    const e = new Date(startYear + 1, m, d);
-    e.setDate(e.getDate() - 1); 
-    const fmt = (dt) => dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    return {
-      start: s.toISOString().split('T')[0],
-      end: e.toISOString().split('T')[0],
-      label: `${fmt(s)} to ${fmt(e)}`
-    };
-  }, [systemSettings.holidayYearStartMonth, systemSettings.holidayYearStartDay]);
-
-  const getLeaveTaken = useCallback((email, isTT) => {
-    if (!email) return 0;
-    return requests.filter(r =>
-      r.employeeEmail === email &&
-      r.status === 'Approved' &&
-      (isTT ? r.type === CONFIG.termTimeWorkType : r.type === 'Annual Leave') &&
-      r.startDate >= currentHolidayYear.start &&
-      r.startDate <= currentHolidayYear.end
-    ).reduce((t, r) => t + Number(r.daysCount || 0), 0);
-  }, [requests, currentHolidayYear]);
-
-  const getTOILBalance = useCallback((email, staffTarget, staffHoursPerDay, isTermTime = true) => {
-    const hpd = Number(staffHoursPerDay || systemSettings?.hoursPerDay || CONFIG.defaultHoursPerDay);
-    const baseTarget = isTermTime
-      ? (Number((staffTarget != null && staffTarget > 0 ? staffTarget : null) ?? systemSettings?.termTimeDaysTarget ?? 30) || 30)
-      : 0;
-    const empty = { accrued: 0, used: 0, credit: 0, balance: 0, toilBalance: 0, daysOwed: 0, target: baseTarget, effectiveTarget: baseTarget, termTimeLeaveTaken: 0, remainingToWork: baseTarget, hoursPerDay: hpd, accruedHours: 0, usedHours: 0, creditHours: 0, isTermTime };
-    if (!email || !currentHolidayYear?.start) return empty;
-    const approved = requests.filter(r =>
-      r.employeeEmail === email &&
-      r.status === 'Approved' &&
-      r.startDate >= currentHolidayYear.start &&
-      r.startDate <= currentHolidayYear.end
-    );
-    const accrued = isTermTime
-      ? approved.filter(r => r.type === CONFIG.termTimeWorkType || r.type === CONFIG._legacyTermTimeWorkType).reduce((t, r) => t + (Number(r.daysCount) || 0), 0)
-      : approved.filter(r => r.type === CONFIG.extraHoursType).reduce((t, r) => t + (Number(r.daysCount) || 0), 0);
-    const used = approved
-      .filter(r => r.type === CONFIG.toiLeaveType || r.approvalSubType === 'TOIL')
-      .reduce((t, r) => t + (Number(r.daysCount) || 0), 0);
-    const termTimeLeaveTaken = isTermTime
-      ? approved.filter(r => r.type === CONFIG.termTimeLeaveType).reduce((t, r) => t + (Number(r.daysCount) || 0), 0)
-      : 0;
-    const effectiveTarget = baseTarget + termTimeLeaveTaken;  
-    const credit   = accrued - used;                          
-    const daysOwed = Math.max(0, used - accrued);             
-    const round1 = (n) => Math.round(n * 10) / 10;
-    return {
-      accrued,
-      used,
-      credit,
-      toilBalance: credit,         
-      balance:     credit,         
-      daysOwed,
-      target:          baseTarget,
-      effectiveTarget,             
-      termTimeLeaveTaken,
-      remainingToWork: isTermTime ? Math.max(0, effectiveTarget - accrued) : 0,
-      hoursPerDay:   hpd,
-      accruedHours:  round1(accrued * hpd),
-      usedHours:     round1(used    * hpd),
-      creditHours:   round1(credit  * hpd),
-      isTermTime,
-    };
-  }, [requests, currentHolidayYear, systemSettings]);
+  const getTOILBalance = useCallback(
+    (email, staffTarget, staffHoursPerDay, isTermTime = true) =>
+      calcTOILBalance(requests, email, staffTarget, staffHoursPerDay, isTermTime, systemSettings, currentHolidayYear),
+    [requests, currentHolidayYear, systemSettings]
+  );
 
   const updateStaffTarget = async (staffId, days) => {
     try {
@@ -435,15 +230,10 @@ const App = () => {
     }
   };
 
-  const getYearStartForClosingDate = useCallback((closingDateStr) => {
-    if (!closingDateStr) return currentHolidayYear.start;
-    const m = (systemSettings.holidayYearStartMonth || 9) - 1; 
-    const d = systemSettings.holidayYearStartDay || 1;
-    const closing = new Date(closingDateStr);
-    let yr = closing.getFullYear();
-    if (new Date(yr, m, d) > closing) yr -= 1;
-    return `${yr}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  }, [systemSettings.holidayYearStartMonth, systemSettings.holidayYearStartDay, currentHolidayYear.start]);
+  const getYearStartForClosingDate = useCallback(
+    (closingDateStr) => calcYearStartForClosingDate(closingDateStr, systemSettings, currentHolidayYear.start),
+    [systemSettings.holidayYearStartMonth, systemSettings.holidayYearStartDay, currentHolidayYear.start]
+  );
 
   const calculateCarryForwardData = useCallback((yearStart, yearEnd) => {
     const maxCarry = systemSettings.maxCarryForwardDays ?? 5;
@@ -491,30 +281,9 @@ const App = () => {
     }
   };
 
-  const getAllowanceStats = (taken, allowance, isTermTime) => {
-    const remaining = allowance - taken;
-    let colorClass = 'bg-[#064e3b]', textColor = 'text-emerald-700', statusText = isTermTime ? 'On Track' : 'Good Standing';
-    if (!isTermTime) {
-      if (remaining < 0) { colorClass = 'bg-red-800'; textColor = 'text-red-700 font-bold'; statusText = 'OVER ALLOWANCE'; }
-      else if (taken / allowance >= 0.9) { colorClass = 'bg-red-600'; textColor = 'text-red-600'; statusText = 'Critical'; }
-      else if (taken / allowance >= 0.75) { colorClass = 'bg-orange-500'; textColor = 'text-orange-600'; statusText = 'Low'; }
-    } else {
-      colorClass = 'bg-blue-600'; textColor = 'text-blue-700';
-      if (remaining <= 0) { colorClass = 'bg-[#064e3b]'; textColor = 'text-emerald-700 font-bold'; statusText = 'Target Met'; }
-    }
-    return { remaining, colorClass, textColor, statusText };
-  };
+  const getAllowanceStats = calcAllowanceStats;
 
-  const checkForOverlap = (email, startStr, endStr) => {
-    const newStart = new Date(startStr);
-    const newEnd = new Date(endStr);
-    const existing = requests.filter(r => r.employeeEmail === email && r.status !== 'Rejected');
-    return existing.some(r => {
-      const rStart = new Date(r.startDate);
-      const rEnd = new Date(r.endDate || r.startDate);
-      return (newStart <= rEnd && newEnd >= rStart);
-    });
-  };
+  const checkForOverlap = (email, startStr, endStr) => calcOverlap(requests, email, startStr, endStr);
 
 
   const submitRequest = async (e) => {
@@ -555,12 +324,7 @@ const App = () => {
       return;
     }
 
-    const assignedApprover = myProfile?.approverEmail && !isEmailArchived(myProfile.approverEmail) ? myProfile.approverEmail : null;
-    const baseRecipients = getNotificationRecipients(myDept);
-    // If an approver is assigned, send ONLY to them. Otherwise, send to default department heads / all admins.
-    // Exclude the submitter themselves to avoid self-notification.
-    const rawRecipients = assignedApprover ? [assignedApprover] : baseRecipients;
-    const recipients = rawRecipients.filter(e => e?.toLowerCase() !== user.email?.toLowerCase());
+    const { recipients } = resolveRecipients(staffList, myProfile, myDept, user.email);
 
     let balanceSummaryRows = [];
     if (!amITermTime && formData.type === 'Annual Leave') {

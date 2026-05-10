@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Plus, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../supabase';
+import { sendOrgWelcomeEmail } from '../services/emailNotifications';
 
 const OnboardingAdmin = ({ user, onSuccess }) => {
   // SECURITY: Removed master password feature - was exposed in client bundle.
@@ -78,6 +79,22 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
 
       console.log(`✅ Organization created: ${orgId}`);
 
+      // Send welcome email to the new admin (best-effort — don't fail org creation if email fails)
+      let emailNote = '';
+      if (user?.azureToken) {
+        const emailResult = await sendOrgWelcomeEmail(
+          formData.adminEmail,
+          formData.adminFirstName,
+          formData.organizationName,
+          user.azureToken
+        );
+        emailNote = emailResult.success
+          ? `\n\n✅ Welcome email sent to ${formData.adminEmail}`
+          : `\n\n⚠️ Welcome email could not be sent (${emailResult.error}). The admin can still sign in.`;
+      } else {
+        emailNote = '\n\n⚠️ No Microsoft token available — welcome email not sent. The admin can still sign in.';
+      }
+
       setMessage({
         type: 'success',
         text: `Organization "${formData.organizationName}" created successfully!
@@ -85,7 +102,7 @@ const OnboardingAdmin = ({ user, onSuccess }) => {
 The admin can now sign in with: ${formData.adminEmail}
 
 Organization ID: ${orgId}
-Domain: ${domain}`
+Domain: ${domain}${emailNote}`
       });
 
       // Reset form
