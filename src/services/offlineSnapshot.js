@@ -335,6 +335,95 @@ export const downloadSnapshotHtml = (html, orgId) => {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Revoke after a tick so download dialog has time to grab the URL
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// JSON BACKUP — full data export for safekeeping / point-in-time restore
+// ─────────────────────────────────────────────────────────────────────────
+
+const BACKUP_FORMAT_VERSION = '1.0';
+
+/**
+ * Pull a complete data backup for an organisation directly from Supabase.
+ * Bypasses the in-memory snapshot so we capture EVERYTHING — including
+ * archived staff, full request history, all settings columns, etc.
+ *
+ * Sotara super admin only — assumes RLS allows reading the target org.
+ *
+ * @param {object} supabase     – authenticated Supabase client
+ * @param {string} orgId
+ * @param {string} [generatedBy]
+ * @returns {Promise<object>} the full backup object (also passed to downloader)
+ */
+export const buildOrgBackup = async (supabase, orgId, generatedBy) => {
+  if (!orgId) throw new Error('orgId is required');
+
+  // Fetch every table in parallel. We use plain SELECT * so future schema
+  // changes are captured without code changes here.
+  const tables = [
+    ['organization',  supabase.from('organizations').select('*').eq('id', orgId).maybeSingle()],
+    ['staff',         supabase.from('mt_staff').select('*').eq('organization_id', orgId).order('name')],
+    ['requests',      supabase.from('mt_requests').select('*').eq('organization_id', orgId).order('submittedat', { ascending: false })],
+    ['departments',   supabase.from('mt_departments').select('*').eq('organization_id', orgId).order('name')],
+    ['term_dates',    supabase.from('mt_termdates').select('*').eq('organization_id', orgId).order('date')],
+    ['school_terms',  supabase.from('mt_schoolterms').select('*').eq('organization_id', orgId).order('academicyear')],
+    ['announcements', supabase.from('mt_announcements').select('*').eq('organization_id', orgId).order('createdat', { ascending: false })],
+    ['settings',      supabase.from('mt_settings').select('*').eq('organization_id', orgId).maybeSingle()],
+    ['email_log',     supabase.from('email_log').select('*').eq('organization_id', orgId).order('sent_at', { ascending: false }).limit(500)],
+  ];
+
+  const results = await Promise.all(tables.map(([, q]) => q));
+
+  const data = {};
+  const errors = [];
+  results.forEach((res, i) => {
+    const [name] = tables[i];
+    if (res.error) {
+      // Record but don't fail the whole backup — partial is better than nothing
+      errors.push({ table: name, message: res.error.message });
+      data[name] = null;
+    } else {
+      data[name] = res.data;
+    }
+  });
+
+  return {
+    formatVersion: BACKUP_FORMAT_VERSION,
+    generatedAt:   new Date().toISOString(),
+    generatedBy:   generatedBy || 'unknown',
+    source:        'leavehub.sotara.co.uk',
+    organizationId: orgId,
+    counts: {
+      staff:         Array.isArray(data.staff)         ? data.staff.length         : 0,
+      requests:      Array.isArray(data.requests)      ? data.requests.length      : 0,
+      departments:   Array.isArray(data.departments)   ? data.departments.length   : 0,
+      termDates:     Array.isArray(data.term_dates)    ? data.term_dates.length    : 0,
+      schoolTerms:   Array.isArray(data.school_terms)  ? data.school_terms.length  : 0,
+      announcements: Array.isArray(data.announcements) ? data.announcements.length : 0,
+      emailLog:      Array.isArray(data.email_log)     ? data.email_log.length     : 0,
+    },
+    errors,
+    data,
+  };
+};
+
+/**
+ * Trigger a browser download of the backup JSON.
+ *
+ * @param {object} backup  – output of buildOrgBackup()
+ * @param {string} orgId   – used for filename
+ */
+export const downloadBackupJson = (backup, orgId) => {
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = todayISO();
+  a.href = url;
+  a.download = `${orgId}-leavehub-backup-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };

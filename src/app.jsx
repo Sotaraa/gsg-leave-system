@@ -28,7 +28,10 @@ import AnalyticsView from './components/views/AnalyticsView.jsx';
 import OnboardingAdmin from './components/OnboardingAdmin.jsx';
 import { useInactivityTimer } from './hooks/useInactivityTimer.js';
 import { useOrgData } from './hooks/useOrgData.js';
-import { buildOfflineSnapshotHtml, downloadSnapshotHtml } from './services/offlineSnapshot.js';
+import {
+  buildOfflineSnapshotHtml, downloadSnapshotHtml,
+  buildOrgBackup, downloadBackupJson,
+} from './services/offlineSnapshot.js';
 import {
   computeHolidayYear,
   getLeaveTaken as calcLeaveTaken,
@@ -218,6 +221,29 @@ const App = () => {
     } catch (err) {
       console.error('Snapshot generation failed:', err);
       addNotification('Failed to generate snapshot');
+    }
+  };
+
+  // Pulls a complete JSON dump of the active org direct from Supabase
+  // (every table, including archived staff and full history).
+  const generateOrgBackup = async () => {
+    if (!isSuperAdmin || !activeOrgId) return;
+    const org = allOrgs.find(o => o.id === activeOrgId);
+    if (!org) {
+      addNotification('Could not find organisation data');
+      return;
+    }
+    addNotification(`Building backup for ${org.name}…`);
+    try {
+      const backup = await buildOrgBackup(supabase, org.id, user?.email);
+      downloadBackupJson(backup, org.id);
+      const c = backup.counts;
+      addNotification(
+        `Backup downloaded — ${c.staff} staff, ${c.requests} requests${backup.errors.length ? ` (${backup.errors.length} table error)` : ''}`
+      );
+    } catch (err) {
+      console.error('Backup generation failed:', err);
+      addNotification('Failed to generate backup');
     }
   };
 
@@ -1125,7 +1151,7 @@ const App = () => {
               God Mode — Viewing <strong style={{ color: '#FCD34D' }}>{allOrgs.find(o => o.id === activeOrgId)?.name || activeOrgId}</strong> as Admin
               <button
                 onClick={generateOfflineSnapshot}
-                title="Download a self-contained HTML snapshot for this client (use during downtime)"
+                title="Self-contained HTML report — email to client during downtime"
                 style={{
                   marginLeft: 'auto',
                   background: 'rgba(251,191,36,0.2)',
@@ -1139,7 +1165,24 @@ const App = () => {
                   letterSpacing: '0.5px',
                 }}
               >
-                📥 Download Snapshot
+                📥 Snapshot
+              </button>
+              <button
+                onClick={generateOrgBackup}
+                title="Full JSON data backup — every table for this org, for safekeeping or restore"
+                style={{
+                  background: 'rgba(251,191,36,0.2)',
+                  border: '1px solid rgba(251,191,36,0.4)',
+                  color: '#FCD34D',
+                  borderRadius: 6,
+                  padding: '2px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                💾 Backup
               </button>
               <button
                 onClick={() => setActiveOrgId(null)}
