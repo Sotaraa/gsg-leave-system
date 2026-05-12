@@ -14,6 +14,7 @@ import {
   sendSubmissionNotification
 } from './services/emailNotifications.js';
 import { logEmail } from './services/emailLog.js';
+import { logAction } from './services/actionLog.js';
 import { resolveRecipients } from './services/notificationRecipients.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { OrganizationProvider } from './contexts/OrganizationContext.jsx';
@@ -282,6 +283,14 @@ const App = () => {
     try {
       await supabaseApi.settingsApi.updateSettings(updates, effectiveOrgId);
       setSystemSettings(prev => ({ ...prev, ...updates }));
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'UPDATE_SETTINGS',
+        entityType:     'settings',
+        entityDescription: `Updated: ${Object.keys(updates).join(', ')}`,
+        details: updates,
+      });
       addNotification("Settings Saved");
     } catch (err) {
       console.error('Error saving settings:', err);
@@ -331,6 +340,18 @@ const App = () => {
         lastYearResetDate: resetDate,
         lastYearResetClosingDate: closingDateStr || resetDate
       }, effectiveOrgId);
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'CARRY_FORWARD_RESET',
+        entityType:     'settings',
+        entityDescription: `Holiday year reset — carry forward applied for ${carryData.length} staff`,
+        details: {
+          closingDate: closingDateStr,
+          staffCount:  carryData.length,
+          totalCarried: carryData.reduce((sum, s) => sum + (s.carryForward || 0), 0),
+        },
+      });
       addNotification(`Holiday year reset. Carry forward applied for ${carryData.length} staff.`);
       return true;
     } catch (error) {
@@ -528,7 +549,22 @@ const App = () => {
         }
       }
 
-      // Log the approval for audit trail
+      // Audit log
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     status === 'Approved' ? 'APPROVE_REQUEST' : 'REJECT_REQUEST',
+        entityType:     'request',
+        entityId:       id,
+        entityDescription: `${req.type} for ${req.employeeName} (${formatDateUK(req.startDate)}${req.endDate && req.endDate !== req.startDate ? ' – ' + formatDateUK(req.endDate) : ''})`,
+        details: {
+          employeeEmail: req.employeeEmail,
+          leaveType:     req.type,
+          days:          req.daysCount,
+          ...(approvalSubType   ? { approvalSubType }   : {}),
+          ...(rejectionReason   ? { rejectionReason }   : {}),
+        },
+      });
       logger.log(`Request ${status}: ${req.employeeName} (${req.type}) - Email: ${user.azureToken ? 'sent' : 'no token'}`);
     } catch (error) {
       console.error('❌ Error processing approval:', error);
@@ -551,6 +587,15 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.requestsApi.deleteRequest(id, effectiveOrgId);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     'DELETE_REQUEST',
+            entityType:     'request',
+            entityId:       id,
+            entityDescription: req ? `${req.type} for ${req.employeeName} (${formatDateUK(req.startDate)})` : id,
+            details: req ? { employeeEmail: req.employeeEmail, leaveType: req.type, days: req.daysCount, status: req.status } : {},
+          });
           addNotification("Deleted");
           if (req) {
             const { recipients: approvalRecipients } = resolveRecipients(staffList, staffList.find(s => s.email?.toLowerCase() === req.employeeEmail?.toLowerCase()), req.department, user.email);
@@ -584,8 +629,25 @@ const App = () => {
       const data = { ...newStaff, allowance: Number(newStaff.allowance) };
       if (adminEditId) {
         await supabaseApi.staffApi.updateStaff(adminEditId, data, effectiveOrgId);
+        logAction({
+          organizationId: effectiveOrgId,
+          performedBy:    user.email,
+          actionType:     'EDIT_STAFF',
+          entityType:     'staff',
+          entityId:       adminEditId,
+          entityDescription: data.name,
+          details: { role: data.role, department: data.department, allowance: data.allowance, isTermTime: data.isTermTime },
+        });
       } else {
         await supabaseApi.staffApi.addStaff({ ...data, isArchived: false }, effectiveOrgId);
+        logAction({
+          organizationId: effectiveOrgId,
+          performedBy:    user.email,
+          actionType:     'ADD_STAFF',
+          entityType:     'staff',
+          entityDescription: data.name,
+          details: { email: data.email, role: data.role, department: data.department, allowance: data.allowance },
+        });
       }
       addNotification("Staff Saved");
       setNewStaff({ name: '', email: '', department: departments[0], role: 'Staff', allowance: systemSettings.defaultAllowance, isTermTime: false, approverEmail: '', carryForwardDays: 0, termTimeDaysTarget: 0, workingDays: [], hoursPerDay: null });
@@ -631,6 +693,14 @@ const App = () => {
       if (manualLeave.approvalSubType) manualRecord.approvalSubType = manualLeave.approvalSubType;
 
       await supabaseApi.requestsApi.submitRequest(manualRecord, effectiveOrgId);
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'MANUAL_LEAVE_ADD',
+        entityType:     'request',
+        entityDescription: `${manualLeave.type} for ${staff.name} (${formatDateUK(manualLeave.startDate)})`,
+        details: { employeeEmail: staff.email, leaveType: manualLeave.type, days, silentEmail: manualLeave.silentEmail },
+      });
       addNotification("Absence Recorded");
 
       if (!manualLeave.silentEmail) {
@@ -682,6 +752,14 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.requestsApi.deleteSilentImports(effectiveOrgId);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     'ROLLBACK_SILENT_IMPORTS',
+            entityType:     'request',
+            entityDescription: `${silentRecords.length} silently-imported records deleted`,
+            details: { count: silentRecords.length },
+          });
           addNotification(`${silentRecords.length} imported record${silentRecords.length !== 1 ? 's' : ''} deleted`);
         } catch (error) {
           console.error('Error deleting silent imports:', error);
@@ -725,6 +803,16 @@ const App = () => {
         results.errors.push(`${rec.email} (${rec.startDate}): ${err.message}`);
         results.skipped++;
       }
+    }
+    if (results.imported > 0) {
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'BULK_IMPORT',
+        entityType:     'request',
+        entityDescription: `${results.imported} records imported (${results.skipped} skipped)`,
+        details: { imported: results.imported, skipped: results.skipped, errors: results.errors.slice(0, 10) },
+      });
     }
     return results;
   };
@@ -805,6 +893,16 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.staffApi.toggleArchiveStaff(id, !currentStatus, effectiveOrgId);
+          const staffMember = staffList.find(s => s.id === id);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     currentStatus ? 'RESTORE_STAFF' : 'ARCHIVE_STAFF',
+            entityType:     'staff',
+            entityId:       id,
+            entityDescription: staffMember?.name || id,
+            details: { previousStatus: currentStatus ? 'archived' : 'active' },
+          });
           addNotification(currentStatus ? "User Restored" : "User Archived");
         } catch (error) {
           console.error('Error toggling archive status:', error);
@@ -828,6 +926,15 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.staffApi.deleteStaff(id, effectiveOrgId);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     'DELETE_STAFF',
+            entityType:     'staff',
+            entityId:       id,
+            entityDescription: name,
+            details: { note: 'Permanent deletion — requires typed phrase confirmation' },
+          });
           addNotification(`${name} permanently deleted`);
         } catch (error) {
           console.error('Error deleting staff:', error);
@@ -852,6 +959,13 @@ const App = () => {
     if (!newDeptName) return;
     try {
       await supabaseApi.departmentsApi.addDepartment(newDeptName, effectiveOrgId);
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'ADD_DEPARTMENT',
+        entityType:     'department',
+        entityDescription: newDeptName,
+      });
       addNotification("Department Added");
       setNewDeptName('');
     } catch (error) {
@@ -873,6 +987,15 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.departmentsApi.deleteDepartment(deptId, effectiveOrgId);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     'DELETE_DEPARTMENT',
+            entityType:     'department',
+            entityId:       deptId,
+            entityDescription: name,
+            details: { staffAffected: staffList.filter(s => !s.isArchived && s.department === name).length },
+          });
           addNotification("Department Deleted");
         } catch (error) {
           console.error('Error deleting department:', error);
@@ -886,6 +1009,15 @@ const App = () => {
     if (!newTermDate.date || !newTermDate.description) return;
     try {
       const created = await supabaseApi.termDatesApi.addTermDate(newTermDate, effectiveOrgId);
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'ADD_TERM_DATE',
+        entityType:     'term_date',
+        entityId:       created?.id,
+        entityDescription: `${newTermDate.type}: ${newTermDate.description} (${formatDateUK(newTermDate.date)})`,
+        details: { type: newTermDate.type, date: newTermDate.date },
+      });
       addNotification("Date Added");
       setNewTermDate({ description: '', date: '', type: 'Term Start' });
 
@@ -906,6 +1038,15 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.termDatesApi.deleteTermDate(id, effectiveOrgId);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     'DELETE_TERM_DATE',
+            entityType:     'term_date',
+            entityId:       id,
+            entityDescription: holiday ? `${holiday.type}: ${holiday.description} (${formatDateUK(holiday.date)})` : id,
+            details: holiday ? { type: holiday.type, date: holiday.date } : {},
+          });
           addNotification("Deleted");
         } catch (error) {
           console.error('Error deleting term date:', error);
@@ -921,6 +1062,14 @@ const App = () => {
       const year = newSchoolTerm.autumnStart.substring(0, 4);
       const label = newSchoolTerm.academicYear || `${year}-${Number(year) + 1}`;
       await supabaseApi.schoolTermsApi.addSchoolTerm({ ...newSchoolTerm, academicYear: label }, effectiveOrgId);
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'ADD_SCHOOL_TERM',
+        entityType:     'school_term',
+        entityDescription: `Academic year ${label}`,
+        details: { academicYear: label, autumnStart: newSchoolTerm.autumnStart },
+      });
       addNotification("School term added");
       setNewSchoolTerm({ academicYear: '', autumnStart: '', autumnEnd: '', autumnHalfTermStart: '', autumnHalfTermEnd: '', springStart: '', springEnd: '', springHalfTermStart: '', springHalfTermEnd: '', summerStart: '', summerEnd: '', summerHalfTermStart: '', summerHalfTermEnd: '' });
     } catch (error) {
@@ -945,6 +1094,15 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.schoolTermsApi.deleteSchoolTerm(id, effectiveOrgId);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     'DELETE_SCHOOL_TERM',
+            entityType:     'school_term',
+            entityId:       id,
+            entityDescription: term ? `Academic year ${term.academicYear}` : id,
+            details: term ? { academicYear: term.academicYear } : {},
+          });
           addNotification("School term deleted");
         } catch (error) {
           console.error('Error deleting school term:', error);
@@ -959,6 +1117,14 @@ const App = () => {
     try {
       const hols = generateUKBankHolidays(2025).concat(generateUKBankHolidays(2026));
       await supabaseApi.termDatesApi.importBankHolidays(hols, effectiveOrgId);
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'IMPORT_BANK_HOLIDAYS',
+        entityType:     'term_date',
+        entityDescription: `${hols.length} UK bank holidays imported (2025–2026)`,
+        details: { count: hols.length, years: [2025, 2026] },
+      });
       addNotification("Holidays Imported");
     } catch (error) {
       console.error('Error importing holidays:', error);
@@ -975,6 +1141,14 @@ const App = () => {
         newAnnouncement.expiry,
         effectiveOrgId
       );
+      logAction({
+        organizationId: effectiveOrgId,
+        performedBy:    user.email,
+        actionType:     'POST_ANNOUNCEMENT',
+        entityType:     'announcement',
+        entityDescription: newAnnouncement.message.substring(0, 100),
+        details: { expiry: newAnnouncement.expiry || null },
+      });
       addNotification("Posted");
       setNewAnnouncement({ message: '', expiry: '' });
     } catch (error) {
@@ -992,6 +1166,14 @@ const App = () => {
       onConfirm: async () => {
         try {
           await supabaseApi.announcementsApi.deleteAnnouncement(id, effectiveOrgId);
+          logAction({
+            organizationId: effectiveOrgId,
+            performedBy:    user.email,
+            actionType:     'DELETE_ANNOUNCEMENT',
+            entityType:     'announcement',
+            entityId:       id,
+            entityDescription: ann?.message ? ann.message.substring(0, 100) : id,
+          });
           addNotification("Announcement deleted");
         } catch (error) {
           console.error('Error deleting announcement:', error);

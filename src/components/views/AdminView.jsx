@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit2, Archive, RotateCcw, Download, Upload, AlertCircle, CheckCircle2,
-         Users, ClipboardList, Settings as SettingsIcon, Database, Mail, ShieldAlert } from 'lucide-react';
+         Users, ClipboardList, Settings as SettingsIcon, Database, Mail, ShieldAlert,
+         ScrollText, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import CONFIG from '../../config.js';
 import { formatDateUK, getTermForDate } from '../../utils/helpers.js';
 import { TypeNote } from './EmployeeView.jsx';
 import { getRecentEmailLog } from '../../services/emailLog.js';
+import { getRecentActionLog, ACTION_META, ACTION_CATEGORIES } from '../../services/actionLog.js';
 
 const AdminView = ({
   staffList, requests, departments, termDates, announcements,
@@ -108,6 +110,7 @@ const AdminView = ({
     { key: 'settings', label: 'Settings',       Icon: SettingsIcon  },
     { key: 'data',     label: 'Data & Import',  Icon: Database      },
     { key: 'email',    label: 'Email Activity', Icon: Mail          },
+    { key: 'audit',    label: 'Audit Log',      Icon: ScrollText    },
   ];
 
   // ── Email Activity log ───────────────────────────────────────────────
@@ -123,6 +126,29 @@ const AdminView = ({
     if (adminTab === 'email') refreshEmailLog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminTab, organizationId]);
+
+  // ── Audit log ────────────────────────────────────────────────────────
+  const [auditLog, setAuditLog]             = useState([]);
+  const [auditLogLoading, setAuditLogLoading] = useState(false);
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState('All');
+  const [expandedAuditId, setExpandedAuditId]         = useState(null);
+
+  const refreshAuditLog = async () => {
+    if (!organizationId) return;
+    setAuditLogLoading(true);
+    setAuditLog(await getRecentActionLog(organizationId, 200));
+    setAuditLogLoading(false);
+  };
+  useEffect(() => {
+    if (adminTab === 'audit') refreshAuditLog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminTab, organizationId]);
+
+  const filteredAuditLog = auditCategoryFilter === 'All'
+    ? auditLog
+    : auditLog.filter(row =>
+        (ACTION_CATEGORIES[auditCategoryFilter] || []).includes(row.action_type)
+      );
 
   /* pending request count badge */
   const pendingCount = requests.filter(r => r.status === 'Pending').length;
@@ -1025,6 +1051,138 @@ firstname.lastname@gardenerschools.com,Annual Leave,2025-11-05,2025-11-06,2`}
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* ════ AUDIT LOG TAB ════ */}
+    {adminTab === 'audit' && (
+      <div className="card">
+        {/* Header */}
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 className="font-bold flex items-center gap-2">
+              <ScrollText size={16} className="text-emerald-700" /> Audit Log
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Every significant action taken in the system — who did what and when. Last 200 entries.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Category filter */}
+            <div className="flex items-center gap-1.5">
+              <Filter size={13} className="text-gray-400" />
+              <select
+                value={auditCategoryFilter}
+                onChange={e => setAuditCategoryFilter(e.target.value)}
+                className="text-xs border border-gray-200 rounded px-2 py-1 bg-white"
+              >
+                <option value="All">All categories</option>
+                {Object.keys(ACTION_CATEGORIES).map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={refreshAuditLog}
+              disabled={auditLogLoading}
+              className="btn btn-secondary text-xs"
+            >
+              {auditLogLoading ? 'Loading…' : '🔄 Refresh'}
+            </button>
+          </div>
+        </div>
+
+        {/* Empty state */}
+        {filteredAuditLog.length === 0 && !auditLogLoading && (
+          <p className="text-sm text-gray-500 italic">
+            {auditLog.length === 0
+              ? 'No audit entries yet. Actions taken in the system will appear here.'
+              : 'No entries match the selected filter.'}
+          </p>
+        )}
+
+        {/* Table */}
+        {filteredAuditLog.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 text-gray-500 text-left">
+                  <th className="p-2 font-semibold whitespace-nowrap">Time</th>
+                  <th className="p-2 font-semibold">Action</th>
+                  <th className="p-2 font-semibold">Performed By</th>
+                  <th className="p-2 font-semibold">What</th>
+                  <th className="p-2 font-semibold text-center">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAuditLog.map(row => {
+                  const meta = ACTION_META[row.action_type] || { label: row.action_type, colour: 'bg-gray-100 text-gray-700' };
+                  const hasDetails = row.details && Object.keys(row.details).length > 0;
+                  const isExpanded = expandedAuditId === row.id;
+                  return (
+                    <React.Fragment key={row.id}>
+                      <tr className="border-t hover:bg-gray-50/60 transition-colors">
+                        <td className="p-2 whitespace-nowrap text-gray-500">
+                          {new Date(row.created_at).toLocaleString('en-GB', {
+                            day: '2-digit', month: 'short', year: '2-digit',
+                            hour: '2-digit', minute: '2-digit'
+                          })}
+                        </td>
+                        <td className="p-2">
+                          <span className={`px-2 py-0.5 rounded-full font-semibold text-[11px] ${meta.colour}`}>
+                            {meta.label}
+                          </span>
+                        </td>
+                        <td className="p-2 text-gray-700 max-w-[160px] truncate" title={row.performed_by}>
+                          {row.performed_by}
+                        </td>
+                        <td className="p-2 text-gray-700 max-w-[260px]">
+                          <span className="block truncate" title={row.entity_description}>
+                            {row.entity_description || <span className="text-gray-400 italic">—</span>}
+                          </span>
+                        </td>
+                        <td className="p-2 text-center">
+                          {hasDetails && (
+                            <button
+                              onClick={() => setExpandedAuditId(isExpanded ? null : row.id)}
+                              className="text-gray-400 hover:text-emerald-700 transition-colors"
+                              title={isExpanded ? 'Collapse' : 'Expand details'}
+                            >
+                              {isExpanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded && hasDetails && (
+                        <tr className="border-t border-dashed bg-gray-50">
+                          <td colSpan={5} className="px-4 py-2">
+                            <div className="font-mono text-[11px] text-gray-600 space-y-0.5">
+                              {Object.entries(row.details).map(([k, v]) => (
+                                <div key={k} className="flex gap-2">
+                                  <span className="text-gray-400 min-w-[120px]">{k}:</span>
+                                  <span className="text-gray-700 break-all">
+                                    {Array.isArray(v)
+                                      ? (v.length === 0 ? '[]' : v.join(', '))
+                                      : (typeof v === 'object' && v !== null)
+                                        ? JSON.stringify(v)
+                                        : String(v ?? '—')}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="text-xs text-gray-400 mt-2 text-right">
+              Showing {filteredAuditLog.length} of {auditLog.length} entries
+            </p>
           </div>
         )}
       </div>
