@@ -30,6 +30,7 @@ import OnboardingAdmin from './components/OnboardingAdmin.jsx';
 import { useInactivityTimer } from './hooks/useInactivityTimer.js';
 import { useOrgData } from './hooks/useOrgData.js';
 import { useConfirm } from './hooks/useConfirm.jsx';
+import PwaBanner from './components/PwaBanner.jsx';
 import {
   buildOfflineSnapshotHtml, downloadSnapshotHtml,
   buildOrgBackup, downloadBackupJson,
@@ -134,6 +135,21 @@ const App = () => {
   useEffect(() => {
     const currentYear = new Date().getFullYear();
     setBankHolidays([...generateUKBankHolidays(currentYear), ...generateUKBankHolidays(currentYear + 1)]);
+  }, []);
+
+  // Honour PWA manifest shortcuts (?view=admin, ?view=dept-head, etc.)
+  // so long-pressing the installed app icon lands users in the right tab.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedView = params.get('view');
+    if (requestedView && ['employee', 'dept-head', 'admin', 'calendar', 'analytics'].includes(requestedView)) {
+      setView(requestedView);
+      // Clean up the URL so refreshes don't snap users back here
+      params.delete('view');
+      params.delete('source');
+      const cleaned = params.toString();
+      window.history.replaceState({}, '', cleaned ? `?${cleaned}` : window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
@@ -1303,11 +1319,17 @@ const App = () => {
 
   if (isLoading) return (
     <div className="h-screen flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-blue-50 via-white to-blue-50">
+      <PwaBanner />
       <div className="w-10 h-10 border-4 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
       <p className="text-slate-500 font-medium text-sm">Loading…</p>
     </div>
   );
-  if (!user) return <LoginScreen error={loginError} />;
+  if (!user) return (
+    <>
+      <PwaBanner />
+      <LoginScreen error={loginError} />
+    </>
+  );
 
   // When super admin has switched into a client org, force Admin role for that session
   const effectiveRole = (isSuperAdmin && activeOrgId) ? 'Admin' : myRole;
@@ -1324,6 +1346,8 @@ const App = () => {
     <ErrorBoundary>
       <OrganizationProvider user={user}>
         <div className="app-container">
+
+        <PwaBanner />
 
         {showInactivityWarning && (
           <div style={{
