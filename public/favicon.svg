@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="13" fill="#0A2847"/>
-  <text x="32" y="46"
+  <rect width="64" height="64" rx="13" fill="#050B14"/>
+  <text x="32" y="48"
         font-family="Inter, Arial, sans-serif"
         font-weight="900"
-        font-size="42"
-        fill="#2DC4D4"
+        font-size="46"
+        fill="#2DD4BF"
         text-anchor="middle"
-        letter-spacing="-1">S</text>
+        letter-spacing="-1.5">L</text>
 </svg>
