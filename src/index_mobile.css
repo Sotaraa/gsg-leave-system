@@ -4,14 +4,58 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Sotara brand tokens ──────────────────────────────────────────
-   navy-dark  #071d35   sidebar shadow / deepest bg
-   navy       #0A2847   sidebar background
-   navy-mid   #0d3560   sidebar slightly lighter
-   teal       #2DC4D4   primary accent / active states
-   teal-dark  #1aafbd   hover / pressed teal
-   teal-muted rgba(45,196,212,0.15)  tinted backgrounds
+/* ── Sotara brand tokens (aligned to sotara.co.uk) ─────────────────
+   hero-bg    #050b14   darkest navy — sidebar / login hero
+   navy       #0A2847   secondary dark surfaces
+   navy-mid   #0d3560   accents
+   teal-500   #14B8A6   primary CTA / active states
+   teal-400   #2DD4BF   hover / pressed
+   emerald-300#6EE7B7   gradient stop
+   cyan-400   #22D3EE   gradient stop
+   glow       0 0 48px rgba(20,184,166,0.38)
 ──────────────────────────────────────────────────────────────── */
+
+:root {
+  --hero-bg: #050b14;
+  --teal-500: #14B8A6;
+  --teal-400: #2DD4BF;
+  --emerald-300: #6EE7B7;
+  --cyan-400: #22D3EE;
+  --teal-glow: 0 0 48px rgba(20,184,166,0.38);
+  --teal-glow-soft: 0 0 24px rgba(20,184,166,0.22);
+}
+
+/* Hero gradient text — apply to large headlines for the SOTARA look */
+.text-gradient-sotara {
+  background: linear-gradient(90deg, var(--teal-400) 0%, var(--emerald-300) 50%, var(--cyan-400) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+          color: transparent;
+}
+
+/* Eyebrow pill — uppercase tracked badge used above hero headlines */
+.pill-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: 9999px;
+  border: 1px solid rgba(45,212,191,0.20);
+  background: rgba(45,212,191,0.06);
+  backdrop-filter: blur(8px);
+  color: var(--teal-400);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Subtle dot pattern overlay (paste as background on dark surfaces) */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
 
 body {
   font-family: 'Inter', sans-serif;
@@ -33,28 +77,46 @@ body {
 /* ─── SIDEBAR — desktop ──────────────────────────────────────── */
 .sidebar {
   width: 310px;
-  background: linear-gradient(180deg, #0A2847 0%, #071d35 100%);
+  background:
+    radial-gradient(circle at top left, rgba(20,184,166,0.10), transparent 50%),
+    radial-gradient(circle at bottom right, rgba(99,102,241,0.08), transparent 55%),
+    linear-gradient(180deg, #050b14 0%, #030710 100%);
   color: white;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   z-index: 20;
   transition: transform 0.3s ease;
-  box-shadow: 2px 0 16px rgba(7,29,53,0.4);
+  box-shadow: 2px 0 24px rgba(0,0,0,0.5);
+  position: relative;
+}
+
+/* Subtle dot-grid overlay matches SOTARA's hero */
+.sidebar::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px);
+  background-size: 44px 44px;
+  opacity: 0.03;
+  pointer-events: none;
 }
 
 .sidebar-header {
   padding: 20px;
-  border-bottom: 1px solid rgba(45,196,212,0.12);
+  border-bottom: 1px solid rgba(45,212,191,0.12);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar-menu {
   padding: 16px 10px;
   flex: 1;
   overflow-y: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .nav-item {
@@ -62,7 +124,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 11px 14px;
-  color: rgba(180,230,240,0.7);
+  color: rgba(209,213,219,0.75);   /* gray-300 @ 75% — matches SOTARA nav */
   border-radius: 8px;
   cursor: pointer;
   margin-bottom: 2px;
@@ -74,22 +136,24 @@ body {
 }
 
 .nav-item:hover {
-  background-color: rgba(45,196,212,0.12);
-  color: #2DC4D4;
+  background-color: rgba(20,184,166,0.10);
+  color: var(--teal-400);
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, rgba(45,196,212,0.25) 0%, rgba(26,175,189,0.2) 100%);
-  color: #2DC4D4;
+  background: linear-gradient(135deg, rgba(20,184,166,0.22) 0%, rgba(34,211,238,0.16) 100%);
+  color: var(--teal-400);
   font-weight: 700;
-  box-shadow: 0 2px 12px rgba(45,196,212,0.2);
-  border-left: 3px solid #2DC4D4;
+  box-shadow: 0 2px 16px rgba(20,184,166,0.25);
+  border-left: 3px solid var(--teal-400);
   padding-left: 11px;
 }
 
 .sidebar-footer {
   padding: 16px 10px;
-  border-top: 1px solid rgba(45,196,212,0.10);
+  border-top: 1px solid rgba(45,212,191,0.10);
+  position: relative;
+  z-index: 1;
 }
 
 /* ─── MAIN CONTENT ───────────────────────────────────────────── */
@@ -132,10 +196,10 @@ body {
 
 /* ─── BUTTONS ────────────────────────────────────────────────── */
 .btn {
-  padding: 10px 16px;
-  border-radius: 8px;
+  padding: 10px 18px;
+  border-radius: 10px;
   font-weight: 600;
-  transition: all 0.2s;
+  transition: all 0.25s ease;
   cursor: pointer;
   border: none;
   display: inline-flex;
@@ -145,14 +209,31 @@ body {
   font-size: 14px;
 }
 
+/* Primary CTA — matches SOTARA's teal-500 with glow + lift on hover */
 .btn-primary {
-  background: linear-gradient(135deg, #2DC4D4 0%, #1aafbd 100%);
+  background: var(--teal-500);
   color: white;
-  box-shadow: 0 4px 12px rgba(45,196,212,0.35);
+  box-shadow: 0 4px 14px rgba(20,184,166,0.30);
 }
 .btn-primary:hover {
-  background: linear-gradient(135deg, #1aafbd 0%, #149fac 100%);
-  box-shadow: 0 6px 18px rgba(45,196,212,0.45);
+  background: var(--teal-400);
+  box-shadow: var(--teal-glow);
+  transform: translateY(-2px);
+}
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: var(--teal-glow-soft);
+}
+
+/* Secondary — outlined teal, matches SOTARA secondary buttons */
+.btn-secondary {
+  background: white;
+  color: var(--teal-500);
+  border: 1px solid rgba(20,184,166,0.30);
+}
+.btn-secondary:hover {
+  background: rgba(20,184,166,0.06);
+  border-color: rgba(20,184,166,0.50);
   transform: translateY(-1px);
 }
 .btn-danger { background-color: white; border: 1px solid #fee2e2; color: #ef4444; }
@@ -168,26 +249,26 @@ body {
 }
 .data-table td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: top; }
 .data-table tr:last-child td { border-bottom: none; }
-.data-table tr:hover td { background: rgba(45,196,212,0.04); }
+.data-table tr:hover td { background: rgba(20,184,166,0.04); }
 
 /* ─── BADGES ─────────────────────────────────────────────────── */
 .badge { padding: 4px 10px; border-radius: 9999px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
 .badge-pending  { background: #fef3c7; color: #d97706; }
 .badge-approved { background: #d1fae5; color: #047857; }
 .badge-rejected { background: #fee2e2; color: #b91c1c; }
-.badge-tt       { background: rgba(45,196,212,0.1); color: #0A2847; border: 1px solid rgba(45,196,212,0.3); }
+.badge-tt       { background: rgba(20,184,166,0.10); color: #050b14; border: 1px solid rgba(20,184,166,0.30); }
 
 /* ─── CALENDAR ───────────────────────────────────────────────── */
 .cal-header { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; font-weight: 700; color: #0A2847; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
 .cal-day { background: white; border: 1px solid #e5e7eb; border-radius: 6px; min-height: 80px; padding: 4px; font-size: 0.75rem; cursor: pointer; display: flex; flex-direction: column; transition: all 0.15s; }
-.cal-day:hover { border-color: #2DC4D4; background: rgba(45,196,212,0.04); }
-.cal-day.today { background: rgba(45,196,212,0.08); border-color: #2DC4D4; border-width: 2px; }
+.cal-day:hover { border-color: var(--teal-400); background: rgba(20,184,166,0.05); }
+.cal-day.today { background: rgba(20,184,166,0.10); border-color: var(--teal-500); border-width: 2px; }
 .cal-event { font-size: 0.6rem; padding: 2px 4px; border-radius: 3px; color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .cal-event.leave { background-color: #059669; }
 .cal-event.bank  { background-color: #7e22ce; }
 .cal-event.inset { background-color: #d97706; }
-.cal-event.work  { background-color: #2DC4D4; }
+.cal-event.work  { background-color: var(--teal-500); }
 .cal-grid.weekly { min-height: 300px; }
 .cal-day.weekly-day { min-height: 300px; }
 
@@ -211,24 +292,26 @@ textarea {
 }
 
 input:focus, select:focus, textarea:focus {
-  border-color: #2DC4D4;
-  box-shadow: 0 0 0 3px rgba(45,196,212,0.15);
+  border-color: var(--teal-500);
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.18);
 }
 
 /* ─── ANALYTICS ──────────────────────────────────────────────── */
 .bar-container { width: 100%; background: #e6f4f6; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 6px; }
 .bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
 .announcement-banner {
-  background: linear-gradient(135deg, #0A2847 0%, #0d3560 100%);
+  background:
+    radial-gradient(circle at top right, rgba(20,184,166,0.18), transparent 55%),
+    linear-gradient(135deg, #050b14 0%, #0A2847 100%);
   color: white;
-  padding: 16px;
+  padding: 16px 20px;
   border-radius: 16px;
   margin-bottom: 24px;
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  box-shadow: 0 8px 24px rgba(10,40,71,0.25);
-  border-left: 4px solid #2DC4D4;
+  box-shadow: 0 8px 32px rgba(5,11,20,0.35);
+  border-left: 4px solid var(--teal-400);
 }
 
 /* ─── BRADFORD ───────────────────────────────────────────────── */
@@ -239,7 +322,7 @@ input:focus, select:focus, textarea:focus {
 /* ─── SEARCH DROPDOWN ────────────────────────────────────────── */
 .search-results { border: 1px solid #d1d5db; border-radius: 8px; margin-top: 5px; max-height: 150px; overflow-y: auto; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
 .search-result-item { padding: 8px 12px; font-size: 0.85rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; }
-.search-result-item:hover { background-color: rgba(45,196,212,0.06); color: #0A2847; }
+.search-result-item:hover { background-color: rgba(20,184,166,0.08); color: #050b14; }
 .search-result-item:last-child { border-bottom: none; }
 
 /* ══════════════════════════════════════════════════════════════
@@ -277,16 +360,16 @@ input:focus, select:focus, textarea:focus {
 
   .nav-item.active {
     border-left: none !important;
-    border-top: 3px solid #2DC4D4;
+    border-top: 3px solid var(--teal-400);
     padding-left: 10px;
-    background: rgba(45,196,212,0.15);
+    background: rgba(20,184,166,0.18);
     box-shadow: none;
   }
 
   .sidebar-footer {
     display: flex; align-items: center;
     padding: 0; border-top: none;
-    border-left: 1px solid rgba(45,196,212,0.15);
+    border-left: 1px solid rgba(20,184,166,0.15);
   }
 
   .sidebar-footer .nav-item {
